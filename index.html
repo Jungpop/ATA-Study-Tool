@@ -285,6 +285,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .hsc-del{width:26px;height:26px;border-radius:4px;color:var(--txs);font-size:15px;display:flex;align-items:center;justify-content:center;}
 .hsc-del:active{color:var(--rd);}
 .hsc-prev{font-size:11px;color:var(--txm);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.hsc-drag{width:20px;height:26px;display:flex;align-items:center;justify-content:center;
+  color:var(--txs);font-size:14px;cursor:grab;flex-shrink:0;touch-action:none;}
+.hsc-drag:active{cursor:grabbing;color:var(--ac);}
+.hsc.dragging{opacity:.4;background:var(--s3);}
+.hsc.drag-over{border-color:var(--ac);background:rgba(14,165,233,.08);}
 .ehs{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
   padding:24px;color:var(--txs);font-size:12px;text-align:center;height:100%;}
 
@@ -885,11 +890,9 @@ function renderHS(page){
     const el=document.createElement('div');
     el.className='hs';el.dataset.id=hs.id;
     el.style.cssText=`left:${hs.x*W/100}px;top:${hs.y*H/100}px;width:${hs.w*W/100}px;height:${hs.h*H/100}px;position:absolute;`;
-    const lbl=document.createElement('div');lbl.className='hs-lbl';lbl.textContent=hs.title||`영역${i+1}`;
-    const num=document.createElement('div');num.className='hs-num';num.textContent=i+1;
     const del=document.createElement('button');del.className='hs-del';del.textContent='×';
     del.addEventListener('pointerup',e=>{e.stopPropagation();if(confirm(`"${hs.title||`영역${i+1}`}" 삭제?`))delHS(hs.id);});
-    el.appendChild(lbl);el.appendChild(num);el.appendChild(del);
+    el.appendChild(del);
     el.addEventListener('pointerup',e=>{
       if(e.target===del)return;e.stopPropagation();
       if(mode==='view')openView(hs.id);
@@ -956,12 +959,14 @@ function makeTBEl(tb,W,H){
 
   // ── 삭제 버튼 ──
   const del=document.createElement('button');del.className='tb-del';del.textContent='×';
+  del.addEventListener('pointerdown',e=>{e.stopPropagation();});
   del.addEventListener('pointerup',e=>{
     e.stopPropagation();
     const p=ST.pages[ST.cur];if(!p)return;
     p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
     wrap.remove();save();toast('텍스트 박스 삭제됨');
   });
+  del.addEventListener('click',e=>{e.stopPropagation();});
 
   // ── 너비 조절 핸들 (우측) ──
   const rhR=document.createElement('div');rhR.className='tb-rh-r';
@@ -1268,19 +1273,77 @@ function renderHSList(page){
   if(!cnt){renderEmptyHS();return;}
   let h='';
   page.hotspots.forEach((hs,i)=>{
-    h+=`<div class="hsc" onclick="hsClick(${hs.id})">
-      <div class="hsc-top"><div class="hsc-n">${i+1}</div>
+    h+=`<div class="hsc" data-hsid="${hs.id}" onclick="hsClick(${hs.id})">
+      <div class="hsc-top">
+      <div class="hsc-drag" onclick="event.stopPropagation()" title="드래그하여 순서 변경">⠿</div>
       <div class="hsc-title">${eh(hs.title||`영역${i+1}`)}</div>
       <button class="hsc-del" onclick="event.stopPropagation();delHS(${hs.id})">×</button></div>
       <div class="hsc-prev">${eh(hs.text||'내용 없음')}</div></div>`;
   });
   $('hsList').innerHTML=h;
-  if($('panelR').classList.contains('open')){$('hsListM').innerHTML=h;$('hsCountM').textContent=cnt;}
+  initHSDnD($('hsList'));
+  if($('panelR').classList.contains('open')){$('hsListM').innerHTML=h;$('hsCountM').textContent=cnt;initHSDnD($('hsListM'));}
 }
 function renderEmptyHS(){
   $('hsCnt').textContent=0;
   $('hsList').innerHTML='<div class="ehs"><div style="font-size:28px;opacity:.4">📍</div><div>핫스팟이 없습니다</div></div>';
   if($('panelR').classList.contains('open'))$('hsListM').innerHTML=$('hsList').innerHTML;
+}
+
+// ── HS LIST D&D ──────────────────────────────
+function initHSDnD(container){
+  let dragEl=null,dragId=null;
+  container.querySelectorAll('.hsc-drag').forEach(handle=>{
+    const item=handle.closest('.hsc');
+    // Pointer-based D&D (works on touch + mouse)
+    handle.addEventListener('pointerdown',e=>{
+      e.preventDefault();e.stopPropagation();
+      dragEl=item;dragId=parseInt(item.dataset.hsid);
+      dragEl.classList.add('dragging');
+      handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener('pointermove',e=>{
+      if(!dragEl)return;
+      e.preventDefault();
+      const els=Array.from(container.querySelectorAll('.hsc:not(.dragging)'));
+      let closest=null,closestDist=Infinity;
+      els.forEach(el=>{
+        const box=el.getBoundingClientRect();
+        const mid=box.top+box.height/2;
+        const dist=Math.abs(e.clientY-mid);
+        if(dist<closestDist){closestDist=dist;closest={el,above:e.clientY<mid};}
+      });
+      container.querySelectorAll('.hsc').forEach(el=>el.classList.remove('drag-over'));
+      if(closest)closest.el.classList.add('drag-over');
+    });
+    handle.addEventListener('pointerup',e=>{
+      if(!dragEl)return;
+      const overEl=container.querySelector('.hsc.drag-over');
+      if(overEl&&overEl!==dragEl){
+        const p=ST.pages[ST.cur];if(p){
+          const fromIdx=p.hotspots.findIndex(h=>h.id===dragId);
+          const toId=parseInt(overEl.dataset.hsid);
+          const toIdx=p.hotspots.findIndex(h=>h.id===toId);
+          if(fromIdx!==-1&&toIdx!==-1){
+            const box=overEl.getBoundingClientRect();
+            const insertBefore=e.clientY<box.top+box.height/2;
+            const [moved]=p.hotspots.splice(fromIdx,1);
+            const newIdx=p.hotspots.findIndex(h=>h.id===toId);
+            p.hotspots.splice(insertBefore?newIdx:newIdx+1,0,moved);
+            renderHS(p);renderHSList(p);save();
+          }
+        }
+      }
+      dragEl.classList.remove('dragging');
+      container.querySelectorAll('.hsc').forEach(el=>el.classList.remove('drag-over'));
+      dragEl=null;dragId=null;
+    });
+    handle.addEventListener('pointercancel',()=>{
+      if(dragEl)dragEl.classList.remove('dragging');
+      container.querySelectorAll('.hsc').forEach(el=>el.classList.remove('drag-over'));
+      dragEl=null;dragId=null;
+    });
+  });
 }
 function hsClick(id){closeAllPanels();if(mode==='view')openView(id);else if(mode==='edit')openEdit(id);}
 function delHS(id){
