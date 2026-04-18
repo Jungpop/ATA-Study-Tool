@@ -96,6 +96,18 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .pitem:hover .pedit,.pitem:active .pedit,.pitem:hover .pdel,.pitem:active .pdel{opacity:1;}
 .pedit:active{color:var(--ac);}.pdel:active{color:var(--rd);}
 .uncat{padding:5px 7px 2px;font-size:9px;color:var(--txs);font-family:var(--mono);letter-spacing:1.5px;}
+/* 폴더/페이지 D&D */
+.folder{touch-action:none;user-select:none;-webkit-user-select:none;}
+.pitem{touch-action:none;user-select:none;-webkit-user-select:none;}
+.folder.dragging,.pitem.dragging{opacity:.4;background:var(--s3);}
+.folder.drag-over-top,.pitem.drag-over-top{border-top:2px solid var(--ac);}
+.folder.drag-over-bot,.pitem.drag-over-bot{border-bottom:2px solid var(--ac);}
+.folder.drag-over-into{outline:1px dashed var(--ac);background:rgba(14,165,233,.06);}
+@keyframes lp-pulse{0%{box-shadow:0 0 0 0 rgba(14,165,233,.5);}70%{box-shadow:0 0 0 6px rgba(14,165,233,0);}100%{box-shadow:0 0 0 0 rgba(14,165,233,0);}}
+.folder.drag-ready .fhdr,.pitem.drag-ready{border-color:rgba(14,165,233,.5)!important;animation:lp-pulse .9s ease-out;}
+/* 하위폴더 */
+.subfolder{padding-left:14px;}
+.subfolder .fname{color:var(--ac);}
 #addArea{padding:6px;border-top:1px solid var(--bd);display:flex;flex-direction:column;gap:4px;flex-shrink:0;}
 .abtn{width:100%;padding:9px;border-radius:var(--r);border:1px dashed var(--bd);color:var(--txs);font-size:12px;
   background:transparent;display:flex;align-items:center;justify-content:center;gap:5px;min-height:42px;}
@@ -581,6 +593,10 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
     <div class="dlg-title" id="dlgTitle">새 폴더</div>
     <div class="dlg-sub" id="dlgSub"></div>
     <input class="fin" id="dlgInput" placeholder="">
+    <div id="dlgParentRow" style="display:none;flex-direction:column;gap:5px">
+      <div class="flbl">상위 폴더 (선택사항)</div>
+      <select class="fin" id="dlgParent"></select>
+    </div>
     <div id="dlgFolderRow" style="display:none;flex-direction:column;gap:5px">
       <div class="flbl">폴더 선택 (선택사항)</div>
       <select class="fin" id="dlgFolder"></select>
@@ -597,7 +613,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
   <div class="dlg">
     <div class="dlg-title">페이지 편집</div>
     <div><div class="flbl">페이지 이름</div><input class="fin" id="peNameInput" placeholder="페이지 이름"></div>
-    <div><div class="flbl">폴더 이동</div><select class="fin" id="peFolderSel"></select></div>
+    <div><div class="flbl">폴더 이동 (하위폴더 포함)</div><select class="fin" id="peFolderSel"></select></div>
     <div style="display:flex;gap:7px;justify-content:flex-end">
       <button class="btn btn-s" onclick="closePageEdit()">취소</button>
       <button class="btn btn-p" onclick="confirmPageEdit()">저장</button>
@@ -615,6 +631,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
 //  page.drawData: dataURL | null
 // ════════════════════════════════════════════
 
+// folder: {id, name, open, parentId|null}
 let ST = {folders:[],pages:[],cur:-1};
 let mode = 'edit';
 let addMode = 'folder';
@@ -652,6 +669,7 @@ function load(){
     const d=JSON.parse(raw);
     if(!d||!Array.isArray(d.pages))return;
     ST=d; if(!ST.folders)ST.folders=[];
+    ST.folders.forEach(f=>{if(f.parentId===undefined)f.parentId=null;});
     ST.pages.forEach(p=>{
       if(!p.images)p.images=[];
       if(p.imgData&&!p.images.length){
@@ -729,34 +747,64 @@ function togglePanel(side){
   closeAllPanels();
   if(!was){
     panel.classList.add('open');$('overlay').classList.add('on');
-    if(side==='L')$('pageListM').innerHTML=$('pageList').innerHTML;
-    if(side==='R'){$('hsListM').innerHTML=$('hsList').innerHTML;$('hsCountM').textContent=$('hsCnt').textContent;}
+    if(side==='L'){$('pageListM').innerHTML=$('pageList').innerHTML;initPageDnD($('pageListM'));}
+    if(side==='R'){$('hsListM').innerHTML=$('hsList').innerHTML;$('hsCountM').textContent=$('hsCnt').textContent;initHSDnD($('hsListM'));}
   }
 }
 function closeAllPanels(){['panelL','panelR'].forEach(id=>$(id).classList.remove('open'));$('overlay').classList.remove('on');}
 
 // ── 페이지 목록 ──────────────────────────────
+// 폴더 트리를 재귀로 렌더링. depth=0이 루트.
+function folderHTML(fid, depth){
+  const f=ST.folders.find(x=>x.id==fid);if(!f)return'';
+  const open=f.open!==false;
+  const children=ST.folders.filter(x=>x.parentId==fid);
+  const fps=ST.pages.filter(p=>p.folderId==fid);
+  const totalCnt=fps.length+children.reduce((a,c)=>a+countInFolder(c.id),0);
+  const indent=depth>0?`style="padding-left:${depth*10}px"`:'';
+  let inner='';
+  children.forEach(c=>inner+=folderHTML(c.id,depth+1));
+  fps.forEach(p=>inner+=pH(p,ST.pages.indexOf(p)));
+  return `<div class="folder${depth>0?' subfolder':''}" data-fid="${f.id}" ${indent}>
+    <div class="fhdr" onclick="toggleF('${f.id}')">
+      <span class="farr ${open?'op':''}">▶</span>
+      <span style="font-size:12px">${depth>0?'📂':'📁'}</span>
+      <span class="fname">${eh(f.name)}</span>
+      <span class="fcnt">${totalCnt}</span>
+      <button class="fdel" onclick="event.stopPropagation();delFolder('${f.id}')">×</button>
+    </div>
+    <div class="fpages" id="fp-${f.id}" style="max-height:${open?'9999px':'0'}">
+      ${inner}
+    </div>
+  </div>`;
+}
+function countInFolder(fid){
+  const direct=ST.pages.filter(p=>p.folderId==fid).length;
+  const subs=ST.folders.filter(x=>x.parentId==fid).reduce((a,c)=>a+countInFolder(c.id),0);
+  return direct+subs;
+}
 function renderPages(){
   if(!ST.folders)ST.folders=[];
   $('pageCnt').textContent=ST.pages.length;
   let h='';
-  ST.folders.forEach(f=>{
-    const fps=ST.pages.filter(p=>p.folderId==f.id);const open=f.open!==false;
-    h+=`<div class="folder"><div class="fhdr" onclick="toggleF('${f.id}')">
-      <span class="farr ${open?'op':''}">▶</span><span style="font-size:12px">📁</span>
-      <span class="fname">${eh(f.name)}</span><span class="fcnt">${fps.length}</span>
-      <button class="fdel" onclick="event.stopPropagation();delFolder('${f.id}')">×</button>
-    </div><div class="fpages" id="fp-${f.id}" style="max-height:${open?'2000px':'0'}">
-      ${fps.map(p=>pH(p,ST.pages.indexOf(p))).join('')}</div></div>`;
-  });
+  // 루트 폴더(parentId===null) 만 렌더, 자식은 재귀
+  ST.folders.filter(f=>!f.parentId).forEach(f=>h+=folderHTML(f.id,0));
   const uncat=ST.pages.filter(p=>!p.folderId);
-  if(uncat.length){if(ST.folders.length)h+=`<div class="uncat">미분류</div>`;h+=uncat.map(p=>pH(p,ST.pages.indexOf(p))).join('');}
-  if(!ST.pages.length&&!ST.folders.length)h='<div style="padding:18px;text-align:center;color:var(--txs);font-size:12px;line-height:1.7">아래 버튼으로 추가하세요</div>';
+  if(uncat.length){
+    if(ST.folders.length)h+=`<div class="uncat">미분류</div>`;
+    uncat.forEach(p=>h+=pH(p,ST.pages.indexOf(p)));
+  }
+  if(!ST.pages.length&&!ST.folders.length)
+    h='<div style="padding:18px;text-align:center;color:var(--txs);font-size:12px;line-height:1.7">아래 버튼으로 추가하세요</div>';
   $('pageList').innerHTML=h;
-  if($('panelL').classList.contains('open'))$('pageListM').innerHTML=h;
+  initPageDnD($('pageList'));
+  if($('panelL').classList.contains('open')){
+    $('pageListM').innerHTML=h;
+    initPageDnD($('pageListM'));
+  }
 }
 function pH(p,i){
-  return `<div class="pitem ${i===ST.cur?'sel':''}" onclick="loadPageC(${i})">
+  return `<div class="pitem ${i===ST.cur?'sel':''}" data-pidx="${i}">
     <span style="font-size:11px;color:var(--txs)">📄</span>
     <span class="pname">${eh(p.name)}</span><span class="pcnt">${p.hotspots.length}</span>
     <button class="pedit" onclick="event.stopPropagation();openPageEdit(${i})" title="편집">✎</button>
@@ -767,10 +815,184 @@ function loadPageC(i){closeAllPanels();loadPage(i);}
 function toggleF(fid){const f=ST.folders.find(x=>x.id==fid);if(!f)return;f.open=!f.open;save();renderPages();}
 function delFolder(fid){
   const f=ST.folders.find(x=>x.id==fid);
-  const cnt=ST.pages.filter(p=>p.folderId==fid).length;
-  if(!confirm(`"${f.name}" 삭제? (페이지 ${cnt}개 미분류로 이동)`))return;
-  ST.pages.forEach(p=>{if(p.folderId==fid)p.folderId=null;});
-  ST.folders=ST.folders.filter(x=>x.id!=fid);save();renderPages();toast('폴더 삭제됨');
+  // 하위 폴더 및 페이지 모두 미분류로
+  function detach(id){
+    ST.folders.filter(x=>x.parentId==id).forEach(c=>detach(c.id));
+    ST.pages.forEach(p=>{if(p.folderId==id)p.folderId=null;});
+    ST.folders=ST.folders.filter(x=>x.id!=id);
+  }
+  const cnt=countInFolder(fid);
+  if(!confirm(`"${f.name}" 삭제? (하위 항목 ${cnt}개 미분류로 이동)`))return;
+  detach(fid);save();renderPages();toast('폴더 삭제됨');
+}
+
+// ── 페이지/폴더 D&D (롱프레스 1초) ──────────
+function initPageDnD(container){
+  let dragEl=null,dragType=null,dragId=null,isDragging=false,longPressTimer=null,startY=0;
+
+  function cancelLP(){clearTimeout(longPressTimer);longPressTimer=null;}
+  function resetState(){
+    if(dragEl){dragEl.classList.remove('dragging','drag-ready');}
+    container.querySelectorAll('.folder,.pitem').forEach(el=>{
+      el.classList.remove('drag-over-top','drag-over-bot','drag-over-into');
+    });
+    dragEl=null;dragType=null;dragId=null;isDragging=false;
+  }
+
+  function onDown(e,el,type,id){
+    if(e.target.closest('.fdel,.pdel,.pedit,.fhdr button'))return;
+    // fhdr 클릭은 단순 토글 — 폴더 헤더에서 내려온 이벤트만 허용
+    cancelLP();
+    dragEl=el;dragType=type;dragId=id;isDragging=false;startY=e.clientY;
+    el.classList.add('drag-ready');
+    longPressTimer=setTimeout(()=>{
+      isDragging=true;
+      el.classList.remove('drag-ready');
+      el.classList.add('dragging');
+      try{el.setPointerCapture(e.pointerId);}catch(err){}
+      toast('드래그 모드 활성');
+    },900);
+  }
+
+  function onMove(e){
+    if(!isDragging)return;
+    e.preventDefault();
+    container.querySelectorAll('.folder,.pitem').forEach(el=>{
+      el.classList.remove('drag-over-top','drag-over-bot','drag-over-into');
+    });
+    const targets=Array.from(container.querySelectorAll('.folder:not(.dragging),.pitem:not(.dragging)'));
+    let best=null,bestDist=Infinity;
+    targets.forEach(el=>{
+      const box=el.getBoundingClientRect();
+      const mid=box.top+box.height/2;
+      const dist=Math.abs(e.clientY-mid);
+      if(dist<bestDist){bestDist=dist;best={el,above:e.clientY<mid};}
+    });
+    if(best){
+      // 페이지를 폴더 위로 드래그 시 → into 표시
+      if(dragType==='page'&&best.el.classList.contains('folder')&&bestDist<20){
+        best.el.classList.add('drag-over-into');
+      }else{
+        best.el.classList.add(best.above?'drag-over-top':'drag-over-bot');
+      }
+    }
+  }
+
+  function onUp(e){
+    cancelLP();
+    const wasDragging=isDragging;
+    const savedType=dragType,savedId=dragId,savedEl=dragEl;
+    const overInto=container.querySelector('.folder.drag-over-into');
+    const overTop=container.querySelector('.folder.drag-over-top,.pitem.drag-over-top');
+    const overBot=container.querySelector('.folder.drag-over-bot,.pitem.drag-over-bot');
+    resetState();
+
+    if(!wasDragging){
+      // 단순 클릭 처리
+      if(savedType==='page'){
+        const idx=parseInt(savedEl.dataset.pidx);
+        if(!isNaN(idx))loadPageC(idx);
+      }
+      // 폴더 클릭은 fhdr onclick이 처리
+      return;
+    }
+
+    // ── D&D 완료 ──
+    if(savedType==='page'){
+      const pageIdx=parseInt(savedId);
+      const page=ST.pages[pageIdx];if(!page)return;
+
+      if(overInto){
+        // 폴더 안으로 이동
+        const fid=parseInt(overInto.dataset.fid);
+        page.folderId=fid;
+        save();renderPages();return;
+      }
+      const overEl=overTop||overBot;
+      if(!overEl)return;
+      const above=!!overTop;
+
+      if(overEl.classList.contains('pitem')){
+        // 다른 페이지 앞/뒤로 이동
+        const toIdx=parseInt(overEl.dataset.pidx);
+        if(isNaN(toIdx)||toIdx===pageIdx)return;
+        const [moved]=ST.pages.splice(pageIdx,1);
+        const ni=ST.pages.findIndex((_,i)=>i===(above?toIdx:toIdx));
+        const insertAt=pageIdx<toIdx?(above?toIdx-1:toIdx):(above?toIdx:toIdx+1);
+        ST.pages.splice(Math.max(0,insertAt),0,moved);
+        ST.cur=ST.pages.indexOf(moved);
+      }else if(overEl.classList.contains('folder')){
+        // 폴더 앞/뒤로 이동 → 미분류로
+        page.folderId=null;
+      }
+      save();renderPages();
+
+    }else if(savedType==='folder'){
+      const fid=parseInt(savedId);
+      const folder=ST.folders.find(f=>f.id==fid);if(!folder)return;
+
+      const overEl=overTop||overBot||overInto;
+      if(!overEl)return;
+      const above=!!overTop;
+
+      if(overEl.classList.contains('folder')){
+        const toFid=parseInt(overEl.dataset.fid);
+        if(toFid===fid)return;
+        // 순환 방지: toFid가 fid의 하위인지 확인
+        function isDescendant(parentId,checkId){
+          return ST.folders.filter(f=>f.parentId==parentId).some(f=>f.id==checkId||isDescendant(f.id,checkId));
+        }
+        if(isDescendant(fid,toFid))return;
+
+        if(overInto){
+          // 폴더 안으로 이동 (하위폴더로)
+          folder.parentId=toFid;
+        }else{
+          // 같은 레벨에서 순서 재배치
+          folder.parentId=ST.folders.find(f=>f.id==toFid)?.parentId||null;
+          const rootFolders=ST.folders.filter(f=>f.parentId==folder.parentId);
+          const fromI=rootFolders.findIndex(f=>f.id==fid);
+          const toI=rootFolders.findIndex(f=>f.id==toFid);
+          if(fromI!==-1&&toI!==-1){
+            const allIds=ST.folders.map(f=>f.id);
+            const [movedF]=ST.folders.splice(allIds.indexOf(fid),1);
+            const newBase=ST.folders.findIndex(f=>f.id==toFid);
+            ST.folders.splice(above?newBase:newBase+1,0,movedF);
+          }
+        }
+      }else if(overEl.classList.contains('pitem')){
+        // 페이지 앞으로 → 루트로
+        folder.parentId=null;
+      }
+      save();renderPages();
+    }
+  }
+
+  // 폴더 이벤트 등록
+  container.querySelectorAll('.folder').forEach(el=>{
+    const fid=parseInt(el.dataset.fid);
+    el.addEventListener('pointerdown',e=>{
+      if(e.target.closest('.fhdr'))return; // fhdr는 toggle 담당
+      onDown(e,el,'folder',fid);
+    });
+    el.addEventListener('pointermove',onMove);
+    el.addEventListener('pointerup',onUp);
+    el.addEventListener('pointercancel',()=>{cancelLP();resetState();});
+    el.addEventListener('contextmenu',e=>e.preventDefault());
+  });
+
+  // 페이지 이벤트 등록
+  container.querySelectorAll('.pitem').forEach(el=>{
+    const pidx=parseInt(el.dataset.pidx);
+    el.addEventListener('pointerdown',e=>{
+      if(e.target.closest('.pedit,.pdel'))return;
+      onDown(e,el,'page',pidx);
+    });
+    el.addEventListener('pointermove',onMove);
+    el.addEventListener('pointerup',onUp);
+    el.addEventListener('pointercancel',()=>{cancelLP();resetState();});
+    el.addEventListener('contextmenu',e=>e.preventDefault());
+  });
 }
 function delPage(i){
   if(!confirm(`"${ST.pages[i].name}" 삭제?`))return;
@@ -1378,16 +1600,35 @@ function clearHotspots(){
 }
 
 // ── ADD / PAGE EDIT ──────────────────────────
-function startAdd(type){
+function startAdd(type,parentFid){
   closeAllPanels();addMode=type;
   if(type==='folder'){
     $('dlgTitle').textContent='📁 새 폴더';$('dlgSub').textContent='ATA 챕터별로 분류하세요';
-    $('dlgInput').placeholder='예: ATA 21 – Air Conditioning';$('dlgFolderRow').style.display='none';
+    $('dlgInput').placeholder='예: ATA 21 – Air Conditioning';
+    $('dlgFolderRow').style.display='none';
+    // 상위폴더 선택
+    const ps=$('dlgParent');ps.innerHTML='<option value="">── 최상위 폴더 ──</option>';
+    function addFolderOpts(fid,depth){
+      ST.folders.filter(f=>f.parentId==fid).forEach(f=>{
+        ps.innerHTML+=`<option value="${f.id}">${'　'.repeat(depth)}📁 ${eh(f.name)}</option>`;
+        addFolderOpts(f.id,depth+1);
+      });
+    }
+    addFolderOpts(null,0);
+    if(parentFid)ps.value=parentFid;
+    $('dlgParentRow').style.display='flex';
   }else{
     $('dlgTitle').textContent='＋ 새 페이지';$('dlgSub').textContent='';
     $('dlgInput').placeholder='예: ATA 21-50 Cooling Schematic';
+    $('dlgParentRow').style.display='none';
     const sel=$('dlgFolder');sel.innerHTML='<option value="">── 폴더 없음 ──</option>';
-    ST.folders.forEach(f=>sel.innerHTML+=`<option value="${f.id}">📁 ${eh(f.name)}</option>`);
+    function addFolderOpts2(fid,depth){
+      ST.folders.filter(f=>f.parentId==fid).forEach(f=>{
+        sel.innerHTML+=`<option value="${f.id}">${'　'.repeat(depth)}📁 ${eh(f.name)}</option>`;
+        addFolderOpts2(f.id,depth+1);
+      });
+    }
+    addFolderOpts2(null,0);
     if(ST.cur>=0&&ST.pages[ST.cur]?.folderId)sel.value=ST.pages[ST.cur].folderId;
     $('dlgFolderRow').style.display='flex';
   }
@@ -1398,7 +1639,9 @@ function confirmAdd(){
   const name=$('dlgInput').value.trim();
   if(addMode==='folder'){
     if(!name){toast('이름을 입력하세요');return;}
-    ST.folders.push({id:Date.now(),name,open:true});save();closeAdd();renderPages();toast('폴더 추가됨');
+    const pid=$('dlgParent').value||null;
+    ST.folders.push({id:Date.now(),name,open:true,parentId:pid?parseInt(pid):null});
+    save();closeAdd();renderPages();toast('폴더 추가됨');
   }else{
     ST.pages.push({id:Date.now(),folderId:$('dlgFolder').value||null,name:name||'새 페이지',
       images:[],hotspots:[],drawData:null,tboxes:[]});
@@ -1409,7 +1652,16 @@ function openPageEdit(i){
   closeAllPanels();pageEditIdx=i;const p=ST.pages[i];
   $('peNameInput').value=p.name;
   const sel=$('peFolderSel');sel.innerHTML='<option value="">── 폴더 없음 ──</option>';
-  ST.folders.forEach(f=>sel.innerHTML+=`<option value="${f.id}" ${p.folderId==f.id?'selected':''}>📁 ${eh(f.name)}</option>`);
+  function addOpts(fid,depth){
+    ST.folders.filter(f=>f.parentId==fid).forEach(f=>{
+      const opt=document.createElement('option');
+      opt.value=f.id;opt.textContent='　'.repeat(depth)+'📁 '+f.name;
+      if(p.folderId==f.id)opt.selected=true;
+      sel.appendChild(opt);
+      addOpts(f.id,depth+1);
+    });
+  }
+  addOpts(null,0);
   $('pageEditDlg').style.display='flex';setTimeout(()=>$('peNameInput').focus(),80);
 }
 function closePageEdit(){$('pageEditDlg').style.display='none';pageEditIdx=-1;}
