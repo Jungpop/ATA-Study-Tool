@@ -827,24 +827,34 @@ function delFolder(fid){
 }
 
 // ── 페이지/폴더 D&D (롱프레스 1초) ──────────
+// 핵심 설계:
+//  - .fhdr 에만 폴더 롱프레스 등록 (폴더 전체 div 아님 → 버블링 차단)
+//  - .pitem pointerdown 은 stopPropagation → 상위 .folder 로 전파 안 됨
+//  - pointermove/pointerup 은 container 단 하나에만 등록 (중복 방지)
+//  - 드래그 타겟 판정: .fhdr (폴더헤더) 와 .pitem 만 대상
 function initPageDnD(container){
-  let dragEl=null,dragType=null,dragId=null,isDragging=false,longPressTimer=null,startY=0;
+  let dragEl=null,dragType=null,dragData=null,isDragging=false,longPressTimer=null,capturedPid=null;
 
   function cancelLP(){clearTimeout(longPressTimer);longPressTimer=null;}
-  function resetState(){
-    if(dragEl){dragEl.classList.remove('dragging','drag-ready');}
-    container.querySelectorAll('.folder,.pitem').forEach(el=>{
-      el.classList.remove('drag-over-top','drag-over-bot','drag-over-into');
-    });
-    dragEl=null;dragType=null;dragId=null;isDragging=false;
+
+  function clearHighlights(){
+    container.querySelectorAll('.fhdr,.pitem').forEach(el=>
+      el.classList.remove('drag-over-top','drag-over-bot','drag-over-into')
+    );
   }
 
-  function onDown(e,el,type,id){
-    if(e.target.closest('.fdel,.pdel,.pedit,.fhdr button'))return;
-    // fhdr 클릭은 단순 토글 — 폴더 헤더에서 내려온 이벤트만 허용
+  function resetState(){
     cancelLP();
-    dragEl=el;dragType=type;dragId=id;isDragging=false;startY=e.clientY;
+    clearHighlights();
+    if(dragEl){dragEl.classList.remove('dragging','drag-ready');}
+    dragEl=null;dragType=null;dragData=null;isDragging=false;capturedPid=null;
+  }
+
+  function startLP(e, el, type, data){
+    cancelLP();
+    dragEl=el; dragType=type; dragData=data; isDragging=false;
     el.classList.add('drag-ready');
+    capturedPid=e.pointerId;
     longPressTimer=setTimeout(()=>{
       isDragging=true;
       el.classList.remove('drag-ready');
@@ -854,143 +864,156 @@ function initPageDnD(container){
     },900);
   }
 
-  function onMove(e){
-    if(!isDragging)return;
-    e.preventDefault();
-    container.querySelectorAll('.folder,.pitem').forEach(el=>{
-      el.classList.remove('drag-over-top','drag-over-bot','drag-over-into');
+  // ── 타겟 판정: 커서 Y 위치에서 가장 가까운 .fhdr 또는 .pitem ──
+  function findTarget(clientY){
+    // 드래그 중인 원소(또는 그 조상 폴더) 를 제외
+    const dragFolderEl = dragType==='folder' ? dragEl : null;
+    const items = Array.from(container.querySelectorAll('.fhdr,.pitem')).filter(el=>{
+      if(dragType==='folder'){
+        // 드래그 중인 폴더의 .fhdr 및 그 하위 항목 제외
+        if(dragFolderEl && dragFolderEl.contains(el)) return false;
+      }else{
+        // 드래그 중인 .pitem 제외
+        if(el===dragEl) return false;
+      }
+      return true;
     });
-    const targets=Array.from(container.querySelectorAll('.folder:not(.dragging),.pitem:not(.dragging)'));
-    let best=null,bestDist=Infinity;
-    targets.forEach(el=>{
+    let best=null, bestDist=Infinity;
+    items.forEach(el=>{
       const box=el.getBoundingClientRect();
       const mid=box.top+box.height/2;
-      const dist=Math.abs(e.clientY-mid);
-      if(dist<bestDist){bestDist=dist;best={el,above:e.clientY<mid};}
+      const dist=Math.abs(clientY-mid);
+      if(dist<bestDist){bestDist=dist;best={el,above:clientY<mid,dist};}
     });
-    if(best){
-      // 페이지를 폴더 위로 드래그 시 → into 표시
-      if(dragType==='page'&&best.el.classList.contains('folder')&&bestDist<20){
-        best.el.classList.add('drag-over-into');
-      }else{
-        best.el.classList.add(best.above?'drag-over-top':'drag-over-bot');
-      }
-    }
+    return best;
   }
 
-  function onUp(e){
+  // ── container 레벨 pointermove / pointerup ──
+  container.addEventListener('pointermove',e=>{
+    if(!isDragging)return;
+    e.preventDefault();
+    clearHighlights();
+    const t=findTarget(e.clientY);
+    if(!t)return;
+    const isFhdr=t.el.classList.contains('fhdr');
+    // 페이지를 폴더헤더 중앙 근처로 가져가면 → into
+    if(dragType==='page' && isFhdr && t.dist<18){
+      t.el.classList.add('drag-over-into');
+    }else{
+      t.el.classList.add(t.above?'drag-over-top':'drag-over-bot');
+    }
+  },{passive:false});
+
+  container.addEventListener('pointerup',e=>{
+    if(!dragEl)return;
     cancelLP();
     const wasDragging=isDragging;
-    const savedType=dragType,savedId=dragId,savedEl=dragEl;
-    const overInto=container.querySelector('.folder.drag-over-into');
-    const overTop=container.querySelector('.folder.drag-over-top,.pitem.drag-over-top');
-    const overBot=container.querySelector('.folder.drag-over-bot,.pitem.drag-over-bot');
+    const savedType=dragType, savedData=dragData, savedEl=dragEl;
+
+    const overInto  = container.querySelector('.fhdr.drag-over-into');
+    const overTop   = container.querySelector('.fhdr.drag-over-top,.pitem.drag-over-top');
+    const overBot   = container.querySelector('.fhdr.drag-over-bot,.pitem.drag-over-bot');
     resetState();
 
     if(!wasDragging){
-      // 단순 클릭 처리
+      // 단순 클릭
       if(savedType==='page'){
-        const idx=parseInt(savedEl.dataset.pidx);
-        if(!isNaN(idx))loadPageC(idx);
+        loadPageC(parseInt(savedData));
       }
-      // 폴더 클릭은 fhdr onclick이 처리
+      // 폴더는 fhdr onclick(toggleF)이 처리
       return;
     }
 
-    // ── D&D 완료 ──
+    const overEl = overInto || overTop || overBot;
+    if(!overEl) return;
+    const above = !!overTop;
+
     if(savedType==='page'){
-      const pageIdx=parseInt(savedId);
-      const page=ST.pages[pageIdx];if(!page)return;
+      const page=ST.pages[parseInt(savedData)]; if(!page)return;
+      const pageIdx=ST.pages.indexOf(page);
 
       if(overInto){
-        // 폴더 안으로 이동
-        const fid=parseInt(overInto.dataset.fid);
-        page.folderId=fid;
-        save();renderPages();return;
+        // 폴더 안으로
+        const fid=parseInt(overInto.closest('.folder').dataset.fid);
+        page.folderId=fid; save(); renderPages(); return;
       }
-      const overEl=overTop||overBot;
-      if(!overEl)return;
-      const above=!!overTop;
-
-      if(overEl.classList.contains('pitem')){
-        // 다른 페이지 앞/뒤로 이동
+      if(overEl.classList.contains('fhdr')){
+        // 폴더 헤더 앞/뒤 → 미분류로
+        page.folderId=null;
+      }else{
+        // 다른 pitem 앞/뒤
         const toIdx=parseInt(overEl.dataset.pidx);
         if(isNaN(toIdx)||toIdx===pageIdx)return;
-        const [moved]=ST.pages.splice(pageIdx,1);
-        const ni=ST.pages.findIndex((_,i)=>i===(above?toIdx:toIdx));
+        const[moved]=ST.pages.splice(pageIdx,1);
+        const newIdx=ST.pages.findIndex((_,i)=>i===(above?toIdx:toIdx)); // recalc after splice
+        // splice 후 인덱스 재계산
+        const baseIdx=ST.pages.findIndex(p=>p===ST.pages[above
+          ?(pageIdx<toIdx?toIdx-1:toIdx)
+          :(pageIdx<toIdx?toIdx:toIdx+1)] );
         const insertAt=pageIdx<toIdx?(above?toIdx-1:toIdx):(above?toIdx:toIdx+1);
-        ST.pages.splice(Math.max(0,insertAt),0,moved);
+        ST.pages.splice(Math.max(0,Math.min(ST.pages.length,insertAt)),0,moved);
         ST.cur=ST.pages.indexOf(moved);
-      }else if(overEl.classList.contains('folder')){
-        // 폴더 앞/뒤로 이동 → 미분류로
-        page.folderId=null;
       }
-      save();renderPages();
+      save(); renderPages();
 
     }else if(savedType==='folder'){
-      const fid=parseInt(savedId);
-      const folder=ST.folders.find(f=>f.id==fid);if(!folder)return;
+      const fid=parseInt(savedData);
+      const folder=ST.folders.find(f=>f.id==fid); if(!folder)return;
 
-      const overEl=overTop||overBot||overInto;
-      if(!overEl)return;
-      const above=!!overTop;
+      function isDescendant(pid,cid){
+        return ST.folders.filter(f=>f.parentId==pid).some(f=>f.id==cid||isDescendant(f.id,cid));
+      }
 
-      if(overEl.classList.contains('folder')){
-        const toFid=parseInt(overEl.dataset.fid);
-        if(toFid===fid)return;
-        // 순환 방지: toFid가 fid의 하위인지 확인
-        function isDescendant(parentId,checkId){
-          return ST.folders.filter(f=>f.parentId==parentId).some(f=>f.id==checkId||isDescendant(f.id,checkId));
-        }
-        if(isDescendant(fid,toFid))return;
+      if(overEl.classList.contains('fhdr')){
+        const toFolderEl=overEl.closest('.folder');
+        const toFid=parseInt(toFolderEl.dataset.fid);
+        if(toFid===fid||isDescendant(fid,toFid))return;
 
         if(overInto){
-          // 폴더 안으로 이동 (하위폴더로)
+          // 하위폴더로 편입
           folder.parentId=toFid;
         }else{
-          // 같은 레벨에서 순서 재배치
-          folder.parentId=ST.folders.find(f=>f.id==toFid)?.parentId||null;
-          const rootFolders=ST.folders.filter(f=>f.parentId==folder.parentId);
-          const fromI=rootFolders.findIndex(f=>f.id==fid);
-          const toI=rootFolders.findIndex(f=>f.id==toFid);
-          if(fromI!==-1&&toI!==-1){
-            const allIds=ST.folders.map(f=>f.id);
-            const [movedF]=ST.folders.splice(allIds.indexOf(fid),1);
-            const newBase=ST.folders.findIndex(f=>f.id==toFid);
-            ST.folders.splice(above?newBase:newBase+1,0,movedF);
-          }
+          // 같은 레벨 순서 변경
+          const toFolder=ST.folders.find(f=>f.id==toFid);
+          folder.parentId=toFolder?toFolder.parentId:null;
+          const fromGlobalIdx=ST.folders.findIndex(f=>f.id==fid);
+          const[movedF]=ST.folders.splice(fromGlobalIdx,1);
+          const toGlobalIdx=ST.folders.findIndex(f=>f.id==toFid);
+          ST.folders.splice(above?toGlobalIdx:toGlobalIdx+1,0,movedF);
         }
-      }else if(overEl.classList.contains('pitem')){
-        // 페이지 앞으로 → 루트로
+      }else{
+        // pitem 옆 → 루트로
         folder.parentId=null;
       }
-      save();renderPages();
+      save(); renderPages();
     }
-  }
-
-  // 폴더 이벤트 등록
-  container.querySelectorAll('.folder').forEach(el=>{
-    const fid=parseInt(el.dataset.fid);
-    el.addEventListener('pointerdown',e=>{
-      if(e.target.closest('.fhdr'))return; // fhdr는 toggle 담당
-      onDown(e,el,'folder',fid);
-    });
-    el.addEventListener('pointermove',onMove);
-    el.addEventListener('pointerup',onUp);
-    el.addEventListener('pointercancel',()=>{cancelLP();resetState();});
-    el.addEventListener('contextmenu',e=>e.preventDefault());
   });
 
-  // 페이지 이벤트 등록
+  container.addEventListener('pointercancel',()=>resetState());
+
+  // ── .fhdr 에 폴더 롱프레스 등록 ──
+  // (폴더 헤더에서만 시작, 버튼 클릭은 제외)
+  container.querySelectorAll('.fhdr').forEach(hdr=>{
+    const folderEl=hdr.closest('.folder');
+    const fid=parseInt(folderEl.dataset.fid);
+    hdr.addEventListener('pointerdown',e=>{
+      if(e.target.closest('.fdel'))return;  // 삭제버튼 제외
+      // 버블링 막아서 상위 폴더에 전파 안 됨
+      e.stopPropagation();
+      startLP(e,folderEl,'folder',fid);
+    });
+    hdr.addEventListener('contextmenu',e=>e.preventDefault());
+  });
+
+  // ── .pitem 에 페이지 롱프레스 등록 ──
   container.querySelectorAll('.pitem').forEach(el=>{
     const pidx=parseInt(el.dataset.pidx);
     el.addEventListener('pointerdown',e=>{
       if(e.target.closest('.pedit,.pdel'))return;
-      onDown(e,el,'page',pidx);
+      // 버블링 차단 → 상위 .folder 에 전파 안 됨
+      e.stopPropagation();
+      startLP(e,el,'page',pidx);
     });
-    el.addEventListener('pointermove',onMove);
-    el.addEventListener('pointerup',onUp);
-    el.addEventListener('pointercancel',()=>{cancelLP();resetState();});
     el.addEventListener('contextmenu',e=>e.preventDefault());
   });
 }
