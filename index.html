@@ -285,11 +285,15 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .hsc-del{width:26px;height:26px;border-radius:4px;color:var(--txs);font-size:15px;display:flex;align-items:center;justify-content:center;}
 .hsc-del:active{color:var(--rd);}
 .hsc-prev{font-size:11px;color:var(--txm);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
-.hsc-drag{width:20px;height:26px;display:flex;align-items:center;justify-content:center;
-  color:var(--txs);font-size:14px;cursor:grab;flex-shrink:0;touch-action:none;}
-.hsc-drag:active{cursor:grabbing;color:var(--ac);}
-.hsc.dragging{opacity:.4;background:var(--s3);}
+.hsc{touch-action:none;user-select:none;-webkit-user-select:none;}
+.hsc.dragging{opacity:.4;background:var(--s3);cursor:grabbing;}
 .hsc.drag-over{border-color:var(--ac);background:rgba(14,165,233,.08);}
+@keyframes longpress-pulse{
+  0%{box-shadow:0 0 0 0 rgba(14,165,233,.5);}
+  70%{box-shadow:0 0 0 6px rgba(14,165,233,0);}
+  100%{box-shadow:0 0 0 0 rgba(14,165,233,0);}
+}
+.hsc.drag-ready{border-color:rgba(14,165,233,.5);animation:longpress-pulse .9s ease-out;}
 .ehs{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
   padding:24px;color:var(--txs);font-size:12px;text-align:center;height:100%;}
 
@@ -1273,9 +1277,8 @@ function renderHSList(page){
   if(!cnt){renderEmptyHS();return;}
   let h='';
   page.hotspots.forEach((hs,i)=>{
-    h+=`<div class="hsc" data-hsid="${hs.id}" onclick="hsClick(${hs.id})">
+    h+=`<div class="hsc" data-hsid="${hs.id}">
       <div class="hsc-top">
-      <div class="hsc-drag" onclick="event.stopPropagation()" title="드래그하여 순서 변경">⠿</div>
       <div class="hsc-title">${eh(hs.title||`영역${i+1}`)}</div>
       <button class="hsc-del" onclick="event.stopPropagation();delHS(${hs.id})">×</button></div>
       <div class="hsc-prev">${eh(hs.text||'내용 없음')}</div></div>`;
@@ -1290,59 +1293,76 @@ function renderEmptyHS(){
   if($('panelR').classList.contains('open'))$('hsListM').innerHTML=$('hsList').innerHTML;
 }
 
-// ── HS LIST D&D ──────────────────────────────
+// ── HS LIST D&D (롱프레스 1초 후 활성) ───────
 function initHSDnD(container){
-  let dragEl=null,dragId=null;
-  container.querySelectorAll('.hsc-drag').forEach(handle=>{
-    const item=handle.closest('.hsc');
-    // Pointer-based D&D (works on touch + mouse)
-    handle.addEventListener('pointerdown',e=>{
-      e.preventDefault();e.stopPropagation();
-      dragEl=item;dragId=parseInt(item.dataset.hsid);
-      dragEl.classList.add('dragging');
-      handle.setPointerCapture(e.pointerId);
+  let dragEl=null,dragId=null,isDragging=false;
+  let longPressTimer=null;
+
+  function cancelLongPress(){clearTimeout(longPressTimer);longPressTimer=null;}
+  function resetState(el){
+    if(el){el.classList.remove('dragging','drag-ready');}
+    container.querySelectorAll('.hsc').forEach(e=>e.classList.remove('drag-over'));
+    dragEl=null;dragId=null;isDragging=false;
+  }
+
+  container.querySelectorAll('.hsc').forEach(item=>{
+    item.addEventListener('pointerdown',e=>{
+      if(e.target.closest('.hsc-del'))return;
+      cancelLongPress();
+      dragEl=item;dragId=parseInt(item.dataset.hsid);isDragging=false;
+      item.classList.add('drag-ready');
+      longPressTimer=setTimeout(()=>{
+        isDragging=true;
+        item.classList.remove('drag-ready');
+        item.classList.add('dragging');
+        try{item.setPointerCapture(e.pointerId);}catch(err){}
+        toast('드래그 모드 활성');
+      },900);
     });
-    handle.addEventListener('pointermove',e=>{
-      if(!dragEl)return;
+
+    item.addEventListener('pointermove',e=>{
+      if(!isDragging||!dragEl)return;
       e.preventDefault();
       const els=Array.from(container.querySelectorAll('.hsc:not(.dragging)'));
       let closest=null,closestDist=Infinity;
       els.forEach(el=>{
         const box=el.getBoundingClientRect();
-        const mid=box.top+box.height/2;
-        const dist=Math.abs(e.clientY-mid);
-        if(dist<closestDist){closestDist=dist;closest={el,above:e.clientY<mid};}
+        const dist=Math.abs(e.clientY-(box.top+box.height/2));
+        if(dist<closestDist){closestDist=dist;closest=el;}
       });
       container.querySelectorAll('.hsc').forEach(el=>el.classList.remove('drag-over'));
-      if(closest)closest.el.classList.add('drag-over');
+      if(closest)closest.classList.add('drag-over');
     });
-    handle.addEventListener('pointerup',e=>{
-      if(!dragEl)return;
-      const overEl=container.querySelector('.hsc.drag-over');
-      if(overEl&&overEl!==dragEl){
-        const p=ST.pages[ST.cur];if(p){
-          const fromIdx=p.hotspots.findIndex(h=>h.id===dragId);
-          const toId=parseInt(overEl.dataset.hsid);
-          const toIdx=p.hotspots.findIndex(h=>h.id===toId);
-          if(fromIdx!==-1&&toIdx!==-1){
-            const box=overEl.getBoundingClientRect();
-            const insertBefore=e.clientY<box.top+box.height/2;
-            const [moved]=p.hotspots.splice(fromIdx,1);
-            const newIdx=p.hotspots.findIndex(h=>h.id===toId);
-            p.hotspots.splice(insertBefore?newIdx:newIdx+1,0,moved);
-            renderHS(p);renderHSList(p);save();
+
+    item.addEventListener('pointerup',e=>{
+      cancelLongPress();
+      const wasDragging=isDragging;
+      const savedId=dragId;
+      if(wasDragging){
+        const overEl=container.querySelector('.hsc.drag-over');
+        if(overEl&&overEl!==dragEl){
+          const p=ST.pages[ST.cur];
+          if(p){
+            const fromIdx=p.hotspots.findIndex(h=>h.id===savedId);
+            const toId=parseInt(overEl.dataset.hsid);
+            if(fromIdx!==-1){
+              const box=overEl.getBoundingClientRect();
+              const insertBefore=e.clientY<box.top+box.height/2;
+              const[moved]=p.hotspots.splice(fromIdx,1);
+              const newIdx=p.hotspots.findIndex(h=>h.id===toId);
+              p.hotspots.splice(insertBefore?newIdx:newIdx+1,0,moved);
+              renderHS(p);renderHSList(p);save();
+              return;
+            }
           }
         }
       }
-      dragEl.classList.remove('dragging');
-      container.querySelectorAll('.hsc').forEach(el=>el.classList.remove('drag-over'));
-      dragEl=null;dragId=null;
+      resetState(item);
+      if(!wasDragging) hsClick(savedId);
     });
-    handle.addEventListener('pointercancel',()=>{
-      if(dragEl)dragEl.classList.remove('dragging');
-      container.querySelectorAll('.hsc').forEach(el=>el.classList.remove('drag-over'));
-      dragEl=null;dragId=null;
-    });
+
+    item.addEventListener('pointercancel',()=>{cancelLongPress();resetState(item);});
+    item.addEventListener('contextmenu',e=>e.preventDefault());
   });
 }
 function hsClick(id){closeAllPanels();if(mode==='view')openView(id);else if(mode==='edit')openEdit(id);}
