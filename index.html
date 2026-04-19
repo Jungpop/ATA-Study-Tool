@@ -73,8 +73,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #pageList{flex:1;overflow-y:auto;padding:5px;-webkit-overflow-scrolling:touch;}
 .folder{margin-bottom:2px;}
 .fhdr{display:flex;align-items:center;gap:6px;padding:8px 9px;border-radius:var(--r);border:1px solid transparent;
-  background:var(--s2);cursor:pointer;min-height:42px;}
+  background:var(--s2);cursor:default;min-height:42px;}
 .fhdr:active{border-color:var(--am);}
+.fhdr .farr{cursor:pointer;}
+.fhdr .fname{cursor:text;}
+.fhdr:hover .fdel,.fhdr:active .fdel{opacity:1;}
 .farr{font-size:9px;color:var(--txs);transition:transform .2s;flex-shrink:0;}
 .farr.op{transform:rotate(90deg);}
 .fname{font-size:12px;font-weight:600;color:var(--am);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -91,10 +94,14 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .pname{font-size:12px;font-weight:500;color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pitem.sel .pname{color:var(--ac);}
 .pcnt{font-size:9px;font-family:var(--mono);color:var(--txs);flex-shrink:0;}
-.pedit,.pdel{width:24px;height:24px;border-radius:4px;font-size:14px;display:flex;align-items:center;
+.pdel,.fdel-btn{width:24px;height:24px;border-radius:4px;font-size:14px;display:flex;align-items:center;
   justify-content:center;flex-shrink:0;opacity:0;color:var(--txs);}
-.pitem:hover .pedit,.pitem:active .pedit,.pitem:hover .pdel,.pitem:active .pdel{opacity:1;}
-.pedit:active{color:var(--ac);}.pdel:active{color:var(--rd);}
+.pitem:hover .pdel,.pitem:active .pdel{opacity:1;}
+.pdel:active{color:var(--rd);}
+/* 인라인 이름 편집 */
+.inline-edit{background:transparent;border:none;border-bottom:1px solid var(--ac);color:var(--wh);
+  font-size:12px;font-weight:500;font-family:var(--sans);outline:none;width:100%;min-width:60px;padding:1px 2px;}
+.fname.editing,.pname.editing{overflow:visible;}
 .uncat{padding:5px 7px 2px;font-size:9px;color:var(--txs);font-family:var(--mono);letter-spacing:1.5px;}
 /* 폴더/페이지 D&D */
 .folder{touch-action:none;user-select:none;-webkit-user-select:none;}
@@ -766,10 +773,10 @@ function folderHTML(fid, depth){
   fps.forEach(p=>inner+=pH(p,ST.pages.indexOf(p)));
   children.forEach(c=>inner+=folderHTML(c.id,depth+1));
   return `<div class="folder${depth>0?' subfolder':''}" data-fid="${f.id}" ${indent}>
-    <div class="fhdr" onclick="toggleF('${f.id}')">
-      <span class="farr ${open?'op':''}">▶</span>
-      <span style="font-size:12px">${depth>0?'📂':'📁'}</span>
-      <span class="fname">${eh(f.name)}</span>
+    <div class="fhdr">
+      <span class="farr ${open?'op':''}" onclick="event.stopPropagation();toggleF('${f.id}')">▶</span>
+      <span style="font-size:12px;flex-shrink:0">${depth>0?'📂':'📁'}</span>
+      <span class="fname" data-fid="${f.id}" onclick="event.stopPropagation();startInlineEditFolder('${f.id}',this)">${eh(f.name)}</span>
       <span class="fcnt">${totalCnt}</span>
       <button class="fdel" onclick="event.stopPropagation();delFolder('${f.id}')">×</button>
     </div>
@@ -808,13 +815,59 @@ function renderPages(){
 }
 function pH(p,i){
   return `<div class="pitem ${i===ST.cur?'sel':''}" data-pidx="${i}">
-    <span style="font-size:11px;color:var(--txs)">📄</span>
-    <span class="pname">${eh(p.name)}</span><span class="pcnt">${p.hotspots.length}</span>
-    <button class="pedit" onclick="event.stopPropagation();openPageEdit(${i})" title="편집">✎</button>
-    <button class="pdel"  onclick="event.stopPropagation();delPage(${i})">×</button>
+    <span style="font-size:11px;color:var(--txs);flex-shrink:0">📄</span>
+    <span class="pname" data-pidx="${i}" onclick="event.stopPropagation();startInlineEditPage(${i},this)">${eh(p.name)}</span>
+    <span class="pcnt">${p.hotspots.length}</span>
+    <button class="pdel" onclick="event.stopPropagation();delPage(${i})">×</button>
   </div>`;
 }
 function loadPageC(i){closeAllPanels();loadPage(i);}
+
+// ── 인라인 이름 편집 ──────────────────────────
+function startInlineEditPage(idx, spanEl){
+  if(spanEl.querySelector('input'))return; // 이미 편집 중
+  const page=ST.pages[idx]; if(!page)return;
+  const cur=page.name;
+  const inp=document.createElement('input');
+  inp.className='inline-edit';inp.value=cur;
+  spanEl.textContent='';spanEl.appendChild(inp);
+  inp.focus();inp.select();
+  function commit(){
+    const v=inp.value.trim()||cur;
+    page.name=v;
+    save();renderPages();
+  }
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();commit();}
+    if(e.key==='Escape'){spanEl.textContent=eh(cur);}
+    e.stopPropagation();
+  });
+  inp.addEventListener('blur',commit);
+  inp.addEventListener('pointerdown',e=>e.stopPropagation());
+  inp.addEventListener('click',e=>e.stopPropagation());
+}
+function startInlineEditFolder(fid, spanEl){
+  if(spanEl.querySelector('input'))return;
+  const folder=ST.folders.find(f=>f.id==fid); if(!folder)return;
+  const cur=folder.name;
+  const inp=document.createElement('input');
+  inp.className='inline-edit';inp.value=cur;
+  spanEl.textContent='';spanEl.appendChild(inp);
+  inp.focus();inp.select();
+  function commit(){
+    const v=inp.value.trim()||cur;
+    folder.name=v;
+    save();renderPages();
+  }
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();commit();}
+    if(e.key==='Escape'){spanEl.textContent=eh(cur);}
+    e.stopPropagation();
+  });
+  inp.addEventListener('blur',commit);
+  inp.addEventListener('pointerdown',e=>e.stopPropagation());
+  inp.addEventListener('click',e=>e.stopPropagation());
+}
 function toggleF(fid){const f=ST.folders.find(x=>x.id==fid);if(!f)return;f.open=!f.open;save();renderPages();}
 function delFolder(fid){
   const f=ST.folders.find(x=>x.id==fid);
@@ -919,11 +972,12 @@ function initPageDnD(container){
     resetState();
 
     if(!wasDragging){
-      // 단순 클릭
+      // 단순 클릭 — 페이지 로드 (이름 편집은 pname/fname onclick 담당)
       if(savedType==='page'){
-        loadPageC(parseInt(savedData));
+        // pname 클릭이 아닌 영역(아이콘, 빈 공간)에서 온 경우만 로드
+        if(!e.target.closest('.pname'))loadPageC(parseInt(savedData));
       }
-      // 폴더는 fhdr onclick(toggleF)이 처리
+      // 폴더는 farr(▶) onclick 또는 fname onclick이 처리
       return;
     }
 
@@ -998,8 +1052,9 @@ function initPageDnD(container){
     const folderEl=hdr.closest('.folder');
     const fid=parseInt(folderEl.dataset.fid);
     hdr.addEventListener('pointerdown',e=>{
-      if(e.target.closest('.fdel'))return;  // 삭제버튼 제외
-      // 버블링 막아서 상위 폴더에 전파 안 됨
+      if(e.target.closest('.fdel'))return;   // 삭제버튼 제외
+      if(e.target.closest('.fname'))return;  // 이름 편집 클릭 제외
+      if(e.target.closest('.farr'))return;   // 토글 버튼 제외
       e.stopPropagation();
       startLP(e,folderEl,'folder',fid);
     });
