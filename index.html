@@ -191,16 +191,19 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   background:var(--gr);border:2px solid var(--bg);cursor:se-resize;
   display:none;z-index:5;touch-action:none;}
 
-/* move 모드: 이미지 이동 + 리사이즈 통합 */
-#cv.m-move .ci{cursor:grab;pointer-events:all;}
-#cv.m-move .ci:active{cursor:grabbing;}
-#cv.m-move .ci-del{display:flex;}
-#cv.m-move .ci-rh{display:block;}
+/* edit 모드: 이미지 이동 + 리사이즈 통합 (move 흡수) */
+#cv.m-edit .ci{cursor:grab;pointer-events:all;}
+#cv.m-edit .ci:active{cursor:grabbing;}
+#cv.m-edit .ci-del{display:flex;}
+#cv.m-edit .ci-rh{display:block;}
+/* add-hs 모드: 이미지 위 커서를 십자로 */
+#cv.m-add-hs .ci{cursor:crosshair;pointer-events:all;}
+#cv.m-add-hs .ci-del{display:none;}
+#cv.m-add-hs .ci-rh{display:none;}
 /* 나머지 모드: 이미지는 배경 — 클릭 통과 */
-#cv.m-edit .ci,
 #cv.m-view .ci,
 #cv.m-draw .ci,
-#cv.m-text .ci{pointer-events:none;}
+#cv.m-add-tb .ci{pointer-events:none;}
 
 /* 드로잉 레이어 z:20 */
 #dl{
@@ -214,8 +217,8 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 /* draw 모드 아닐 때도 필기 내용 보여줌 */
 #cv.m-view #dl,
 #cv.m-edit #dl,
-#cv.m-text #dl,
-#cv.m-move #dl{pointer-events:none;}
+#cv.m-add-hs #dl,
+#cv.m-add-tb #dl{pointer-events:none;}
 
 /* 메모 배지 z:30 */
 .hs{
@@ -225,8 +228,8 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   cursor:pointer;
 }
 #cv.m-draw .hs,
-#cv.m-text .hs,
-#cv.m-move .hs{pointer-events:none;}
+#cv.m-add-hs .hs,
+#cv.m-add-tb .hs{pointer-events:none;}
 .hs-badge{
   width:32px;height:32px;border-radius:50%;
   background:var(--ac);
@@ -291,18 +294,15 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   overflow:hidden;/* 스크롤바 숨김 - 자동 높이 조절로 대체 */}
 .tb textarea:focus{border-color:var(--gr);}
 .tb textarea::placeholder{color:rgba(255,255,255,.25);}
-/* 완료 상태 */
-.tb.done textarea{border-color:rgba(16,185,129,.2);background:rgba(6,16,30,.6);cursor:default;resize:none;}
-.tb.done textarea:focus{border-color:rgba(16,185,129,.2);}
+/* 완료 상태 — 텍스트 선택/롱프레스 팝업 차단 */
+.tb.done{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+.tb.done textarea{border-color:rgba(16,185,129,.2);background:rgba(6,16,30,.6);cursor:default;resize:none;
+  user-select:none;-webkit-user-select:none;pointer-events:none;}
 /* D&D 이동 중 */
 .tb.tb-dragging{opacity:.6;outline:2px solid var(--ac);border-radius:5px;}
 /* 롱프레스 준비 */
 @keyframes tb-lp-pulse{0%{box-shadow:0 0 0 0 rgba(14,165,233,.5);}70%{box-shadow:0 0 0 6px rgba(14,165,233,0);}100%{box-shadow:0 0 0 0 rgba(14,165,233,0);}}
 .tb.tb-ready{outline:1px solid rgba(14,165,233,.5);border-radius:5px;animation:tb-lp-pulse .9s ease-out;}
-.tb-del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;
-  background:var(--rd);color:#fff;font-size:12px;font-weight:700;border:2px solid var(--bg);
-  display:flex;align-items:center;justify-content:center;opacity:0;cursor:pointer;z-index:5;}
-.tb:hover .tb-del,.tb:focus-within .tb-del,.tb.done:hover .tb-del{opacity:1;}
 /* 너비 조절 핸들 (우측 중간) — 편집 중일 때만 표시 */
 .tb-rh-r{position:absolute;top:50%;right:-8px;transform:translateY(-50%);
   width:16px;height:32px;border-radius:4px;background:var(--gr);border:2px solid var(--bg);
@@ -312,11 +312,12 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #cv.m-view .tb{pointer-events:none;}
 #cv.m-view .tb textarea{background:rgba(6,16,30,.6);}
 #cv.m-draw .tb{pointer-events:none;}
-/* edit 모드: 드래그만 가능 */
+/* edit 모드: 텍스트박스 완전 활성 (이동 + 편집 모두) */
 #cv.m-edit .tb{pointer-events:all;}
-#cv.m-edit .tb textarea{pointer-events:none;}
-/* move 모드: 텍스트박스 비활성 */
-#cv.m-move .tb{pointer-events:none;}
+#cv.m-edit .tb textarea{pointer-events:all;}
+/* add-hs / add-tb 모드: 텍스트박스 비활성 */
+#cv.m-add-hs .tb{pointer-events:none;}
+#cv.m-add-tb .tb{pointer-events:none;}
 
 /* ── TOOLBAR ── */
 /* 휴지통 존 전환 */
@@ -349,32 +350,6 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
 .szb.on{border-color:var(--ac);background:rgba(14,165,233,.12);}
 .dot{background:#fff;border-radius:50%;pointer-events:none;}
-
-/* ── 편집 서브메뉴 팝업 ── */
-#editMenu{
-  position:absolute;bottom:calc(var(--tb) + 6px);left:50%;transform:translateX(-50%);
-  background:var(--s1);border:1px solid var(--bdL);border-radius:12px;
-  box-shadow:var(--shL);z-index:300;
-  display:none;flex-direction:column;overflow:hidden;min-width:160px;
-}
-#editMenu.open{display:flex;}
-.emitem{
-  display:flex;align-items:center;gap:10px;
-  padding:11px 16px;font-size:13px;color:var(--tx);
-  border:none;background:transparent;text-align:left;
-  transition:background .12s;white-space:nowrap;
-}
-.emitem:hover,.emitem:active{background:var(--s2);}
-.emitem.on{color:var(--ac);background:rgba(14,165,233,.08);}
-.emitem.danger{color:var(--txs);}
-.emitem.danger:hover,.emitem.danger:active{color:var(--rd);background:rgba(239,68,68,.06);}
-.emitem-icon{font-size:16px;width:22px;text-align:center;flex-shrink:0;}
-.emsep{height:1px;background:var(--bd);margin:3px 0;}
-/* 필기 컨트롤 (서브메뉴 하단) */
-#drawCtrlSub{display:none;flex-direction:column;gap:8px;padding:10px 14px 12px;border-top:1px solid var(--bd);}
-#drawCtrlSub.show{display:flex;}
-.dcs-row{display:flex;align-items:center;gap:6px;}
-.dcs-lbl{font-size:9px;color:var(--txs);font-family:var(--mono);letter-spacing:1px;width:28px;}
 
 /* ── RIGHT SIDEBAR ── */
 #hsList{flex:1;overflow-y:auto;padding:6px;-webkit-overflow-scrolling:touch;}
@@ -580,57 +555,41 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
     <!-- TOOLBAR -->
     <div id="tb" style="justify-content:center;">
       <div id="trashZoneInner">🗑&nbsp; 여기에 놓으면 삭제됩니다</div>
-      <!-- 편집 서브메뉴 팝업 -->
-      <div id="editMenu">
-        <button class="emitem on" id="em-edit" onclick="setModeMenu('edit')">
-          <span class="emitem-icon">📝</span>메모
-        </button>
-        <button class="emitem" id="em-text" onclick="setModeMenu('text')">
-          <span class="emitem-icon">🔤</span>텍스트
-        </button>
-        <button class="emitem" id="em-draw" onclick="setModeMenu('draw')">
-          <span class="emitem-icon">🖊</span>필기
-        </button>
-        <button class="emitem" id="em-move" onclick="setModeMenu('move')">
-          <span class="emitem-icon">✋</span>이동/크기
-        </button>
-        <div class="emsep"></div>
-        <button class="emitem danger" onclick="closeEditMenu();clearHotspots()">
-          <span class="emitem-icon">🗑</span>메모 전체삭제
-        </button>
-        <!-- 필기 모드 선택 시 표시 -->
-        <div id="drawCtrlSub">
-          <div class="dcs-row">
-            <span class="dcs-lbl">색상</span>
-            <div class="cc on" id="c0" style="background:#10b981" onclick="setDC('#10b981',0)"></div>
-            <div class="cc" id="c1" style="background:#ef4444" onclick="setDC('#ef4444',1)"></div>
-            <div class="cc" id="c2" style="background:#f59e0b" onclick="setDC('#f59e0b',2)"></div>
-            <div class="cc" id="c3" style="background:#0ea5e9" onclick="setDC('#0ea5e9',3)"></div>
-            <div class="cc" id="c4" style="background:#a855f7" onclick="setDC('#a855f7',4)"></div>
-            <div class="cc" id="c5" style="background:#f8fafc" onclick="setDC('#f8fafc',5)"></div>
-          </div>
-          <div class="dcs-row">
-            <span class="dcs-lbl">굵기</span>
-            <button class="szb on" id="s0" onclick="setDS(2,0)"><div class="dot" style="width:2px;height:2px"></div></button>
-            <button class="szb"    id="s1" onclick="setDS(5,1)"><div class="dot" style="width:5px;height:5px"></div></button>
-            <button class="szb"    id="s2" onclick="setDS(10,2)"><div class="dot" style="width:10px;height:10px"></div></button>
-            <button class="szb"    id="s3" onclick="setDS(18,3)"><div class="dot" style="width:15px;height:15px"></div></button>
-            <button class="szb" id="sEr" onclick="setEraser()" style="font-size:13px">⬜</button>
-          </div>
-          <div class="dcs-row" style="gap:5px;">
-            <button class="tbtn" onclick="undoDraw()" style="height:30px;padding:0 9px;font-size:11px;flex:1">↩ 취소</button>
-            <button class="tbtn del" onclick="clearDraw()" style="height:30px;padding:0 9px;font-size:11px;flex:1">🗑 전체</button>
-          </div>
-        </div>
+
+      <!-- 필기 컨트롤 (draw 모드 전용) -->
+      <div id="drawCtrlBar" style="display:none;align-items:center;gap:5px;flex-shrink:0;">
+        <div class="cc on" id="c0" style="background:#10b981" onclick="setDC('#10b981',0)"></div>
+        <div class="cc" id="c1" style="background:#ef4444" onclick="setDC('#ef4444',1)"></div>
+        <div class="cc" id="c2" style="background:#f59e0b" onclick="setDC('#f59e0b',2)"></div>
+        <div class="cc" id="c3" style="background:#0ea5e9" onclick="setDC('#0ea5e9',3)"></div>
+        <div class="cc" id="c4" style="background:#a855f7" onclick="setDC('#a855f7',4)"></div>
+        <div class="cc" id="c5" style="background:#f8fafc" onclick="setDC('#f8fafc',5)"></div>
+        <div class="tsep"></div>
+        <button class="szb on" id="s0" onclick="setDS(2,0)"><div class="dot" style="width:2px;height:2px"></div></button>
+        <button class="szb"    id="s1" onclick="setDS(5,1)"><div class="dot" style="width:5px;height:5px"></div></button>
+        <button class="szb"    id="s2" onclick="setDS(10,2)"><div class="dot" style="width:10px;height:10px"></div></button>
+        <button class="szb"    id="s3" onclick="setDS(18,3)"><div class="dot" style="width:15px;height:15px"></div></button>
+        <button class="szb" id="sEr" onclick="setEraser()" style="font-size:13px">⬜</button>
+        <div class="tsep"></div>
+        <button class="tbtn" onclick="undoDraw()" style="height:30px;padding:0 9px;font-size:11px">↩ 취소</button>
+        <button class="tbtn del" onclick="clearDraw()" style="height:30px;padding:0 9px;font-size:11px">🗑 전체</button>
       </div>
 
-      <button class="tbtn" id="bView" onclick="setMode('view')">👁 학습</button>
-      <div class="tsep"></div>
-      <button class="tbtn on" id="bEditMenu" onclick="toggleEditMenu()">✏️ <span id="editMenuLabel">메모</span> ▾</button>
-      <div class="tsep"></div>
-      <button class="tbtn" onclick="triggerImg()">🖼 이미지 추가</button>
+      <!-- 기본 툴바 버튼들 -->
+      <div id="tbBtns" style="display:flex;align-items:center;gap:5px;">
+        <button class="tbtn" id="bView" onclick="setMode('view')">👁 학습</button>
+        <div class="tsep"></div>
+        <button class="tbtn on" id="bEdit" onclick="setMode('edit')">✏️ 편집</button>
+        <div class="tsep"></div>
+        <button class="tbtn" id="bDraw" onclick="setMode('draw')">🖊 필기</button>
+        <div class="tsep"></div>
+        <button class="tbtn" id="bAddHs" onclick="startAddHs()">📝 메모 추가</button>
+        <button class="tbtn" id="bAddTb" onclick="startAddTb()">🔤 텍스트 추가</button>
+        <button class="tbtn" onclick="triggerImg()">🖼 이미지 추가</button>
+      </div>
+
       <input type="file" id="imgFile" accept="image/*" multiple style="display:none" onchange="loadImg(event)">
-      <div id="drawCtrl" style="display:none"></div><!-- 기존 drawCtrl 호환용 빈 div -->
+      <div id="drawCtrl" style="display:none"></div><!-- 호환용 빈 div -->
     </div>
   </div>
 
@@ -642,11 +601,14 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
 </div>
 
 <nav id="bnav">
-  <button class="bnt"    id="bnView"      onclick="setMode('view')">      <span class="bi">👁</span><span>학습</span></button>
-  <button class="bnt on" id="bnEditMenu"  onclick="toggleEditMenu()">     <span class="bi">✏️</span><span id="bnEditMenuLabel">메모</span></button>
-  <button class="bnt"    onclick="triggerImg()">                           <span class="bi">🖼</span><span>이미지</span></button>
-  <button class="bnt"    onclick="togglePanel('L')"><span class="bi">📁</span><span>페이지</span></button>
-  <button class="bnt"    onclick="togglePanel('R')"><span class="bi">📋</span><span>목록</span></button>
+  <button class="bnt"    id="bnView"  onclick="setMode('view')">   <span class="bi">👁</span><span>학습</span></button>
+  <button class="bnt on" id="bnEdit"  onclick="setMode('edit')">   <span class="bi">✏️</span><span>편집</span></button>
+  <button class="bnt"    id="bnDraw"  onclick="setMode('draw')">   <span class="bi">🖊</span><span>필기</span></button>
+  <button class="bnt"    onclick="startAddHs()">                   <span class="bi">📝</span><span>메모</span></button>
+  <button class="bnt"    onclick="startAddTb()">                   <span class="bi">🔤</span><span>텍스트</span></button>
+  <button class="bnt"    onclick="triggerImg()">                   <span class="bi">🖼</span><span>이미지</span></button>
+  <button class="bnt"    onclick="togglePanel('L')">               <span class="bi">📁</span><span>페이지</span></button>
+  <button class="bnt"    onclick="togglePanel('R')">               <span class="bi">📋</span><span>목록</span></button>
 </nav>
 </div><!-- /shell -->
 
@@ -775,6 +737,8 @@ let editId=null, viewId=null, popImg=null;
 let sL=false, sR=false;
 let activeTextBox = null; // 현재 편집 중인 텍스트박스 id
 let blockCvClick = false;  // 메모 리사이즈/D&D 후 캔버스 click 차단 플래그
+let addHsPending = false;  // 메모 추가 대기 모드
+let addTbPending = false;  // 텍스트 추가 대기 모드
 // draw
 let dCol='#10b981',dSz=2,dEr=false,dOn=false,dHist=[],dLast=null;
 
@@ -799,13 +763,20 @@ function eh(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repla
 function trashShow(){
   $('tb').classList.add('trash-zone');
   $('trashZoneInner').classList.add('show');
-  // 기존 툴바 버튼들 숨기기
-  $('tb').querySelectorAll(':scope > *:not(#trashZoneInner)').forEach(el=>el.style.display='none');
+  // 새 구조: tbBtns / drawCtrlBar 숨기기
+  const dcb=$('drawCtrlBar'), tbb=$('tbBtns');
+  if(dcb) dcb.style.display='none';
+  if(tbb) tbb.style.display='none';
 }
 function trashHide(){
   $('tb').classList.remove('trash-zone','trash-zone-over');
   $('trashZoneInner').classList.remove('show');
-  $('tb').querySelectorAll(':scope > *:not(#trashZoneInner)').forEach(el=>el.style.display='');
+  // draw 모드면 drawCtrlBar 복원, 아니면 tbBtns 복원
+  const dcb=$('drawCtrlBar'), tbb=$('tbBtns');
+  if(dcb&&tbb){
+    if(mode==='draw'){dcb.style.display='flex';tbb.style.display='none';}
+    else{dcb.style.display='none';tbb.style.display='flex';}
+  }
 }
 function trashIsOver(clientX, clientY){
   const r=$('tb').getBoundingClientRect();
@@ -816,7 +787,7 @@ function trashUpdateOver(clientX, clientY){
 }
 
 // ── 생성 확인 다이얼로그 ──────────────────────
-function showConfirmDlg(title, sub, onOk, okLabel='생성'){
+function showConfirmDlg(title, sub, onOk, okLabel='생성', onCancel=null){
   $('cdlgTitle').textContent=title;
   $('cdlgSub').textContent=sub;
   $('cdlgOk').textContent=okLabel;
@@ -824,7 +795,7 @@ function showConfirmDlg(title, sub, onOk, okLabel='생성'){
   const ok=$('cdlgOk'), cancel=$('cdlgCancel');
   function cleanup(){$('confirmDlg').classList.remove('open');ok.onclick=null;cancel.onclick=null;}
   ok.onclick=()=>{cleanup();onOk();};
-  cancel.onclick=()=>cleanup();
+  cancel.onclick=()=>{cleanup();if(onCancel)onCancel();};
   // 삭제 확인 시 빨간 버튼
   ok.style.background=okLabel==='삭제'?'var(--rd)':'var(--ac)';
   ok.style.color=okLabel==='삭제'?'#fff':'#000';
@@ -870,6 +841,7 @@ function init(){
   else renderEmptyHS();
   initCVEvents();
   initDrawEvents();
+  setMode('edit'); // 초기 툴바 상태 반영
   window.addEventListener('resize',()=>{checkMobile();refreshPage();});
   window.addEventListener('orientationchange',()=>setTimeout(()=>{checkMobile();refreshPage();},200));
 }
@@ -1306,7 +1278,7 @@ function renderImgs(page){
     const rh=document.createElement('div');rh.className='ci-rh';
     let rzStart=null;
     rh.addEventListener('pointerdown',e=>{
-      if(mode!=='move')return;
+      if(mode!=='edit')return;
       e.stopPropagation();e.preventDefault();
       rh.setPointerCapture(e.pointerId);
       rzStart={ox:e.clientX,oy:e.clientY,ow:wrap.offsetWidth,oh:wrap.offsetHeight};
@@ -1343,7 +1315,7 @@ function renderImgs(page){
       document.body.style.webkitUserSelect='';
     }
     wrap.addEventListener('pointerdown',e=>{
-      if(mode!=='move')return;
+      if(mode!=='edit')return;
       if(e.target===del||e.target===rh)return;
       e.stopPropagation();e.preventDefault();
       const p2=cvPt(e.clientX,e.clientY);
@@ -1394,9 +1366,10 @@ function renderImgs(page){
           if(!p.images.length)showEmpty();
           toast('이미지 삭제됨');
         },'삭제',
-        ()=>{// 취소: 원래 좌표로 복원 후 renderImgs
+        ()=>{// 취소: 원래 좌표로 복원 후 renderImgs + renderHS
           im.x=imOrigX; im.y=imOrigY;
-          const _p=ST.pages[ST.cur];if(_p)renderImgs(_p);});
+          const _p=ST.pages[ST.cur];if(!_p)return;
+          renderImgs(_p);renderHS(_p);});
       } else {
         // 이동 확정 시에만 데이터 저장
         im.x=parseFloat(wrap.style.left)/cvW()*100;
@@ -1406,10 +1379,11 @@ function renderImgs(page){
       }
     });
     wrap.addEventListener('pointercancel',()=>{
-      // 취소: 원래 좌표로 복원 후 renderImgs
+      // 취소: 원래 좌표로 복원 후 renderImgs + renderHS
       mvReset();
       im.x=imOrigX; im.y=imOrigY;
-      const _p=ST.pages[ST.cur];if(_p)renderImgs(_p);
+      const _p=ST.pages[ST.cur];if(!_p)return;
+      renderImgs(_p);renderHS(_p);
     });
     wrap.appendChild(img);wrap.appendChild(del);wrap.appendChild(rh);
     CV().appendChild(wrap);
@@ -1701,7 +1675,6 @@ function makeTBEl(tb,W,H){
   let lastTapTime=0;
   wrap.addEventListener('pointerup',e=>{
     if(!wrap.classList.contains('done'))return;
-    if(e.target===del)return;
     const now=Date.now();
     if(now-lastTapTime<350){
       // 더블탭
@@ -1709,20 +1682,6 @@ function makeTBEl(tb,W,H){
       enterEdit();
     }
     lastTapTime=now;
-  });
-
-  // ── 삭제 버튼 ──
-  const del=document.createElement('button');del.className='tb-del';del.textContent='×';
-  del.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();});
-  del.addEventListener('pointerup',e=>{e.stopPropagation();e.preventDefault();});
-  del.addEventListener('click',e=>{
-    e.stopPropagation();e.preventDefault();
-    if(!confirm('텍스트 박스를 삭제하시겠습니까?'))return;
-    if(activeTextBox===tb.id) activeTextBox=null;
-    ta.readOnly=true;
-    const p=ST.pages[ST.cur];if(!p)return;
-    p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
-    wrap.remove();save();toast('텍스트 박스 삭제됨');
   });
 
   // ── 너비 조절 핸들 (편집 중일 때만) ──
@@ -1768,7 +1727,7 @@ function makeTBEl(tb,W,H){
 
   wrap.addEventListener('pointerdown',e=>{
     if(!wrap.classList.contains('done'))return;
-    if(e.target===del||e.target===rhR)return;
+    if(e.target===rhR)return;
     e.stopPropagation();
     // 드래그 시작 전 원래 위치 저장
     origTbX=tb.x; origTbY=tb.y;
@@ -1819,11 +1778,13 @@ function makeTBEl(tb,W,H){
         p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
         wrap.remove();save();toast('텍스트 박스 삭제됨');
       },'삭제',()=>{
-        // 취소: 원래 좌표 복원 후 renderTB
+        // 취소: DOM 재활용, 원래 좌표로 위치 복원 후 done 상태 명시
         tb.x=origTbX; tb.y=origTbY;
-        const p=ST.pages[ST.cur];if(!p)return;
-        wrap.remove();
-        renderTB(p);
+        const W=cvW(),H=cvH();
+        wrap.style.left=origTbX*W/100+'px';
+        wrap.style.top =origTbY*H/100+'px';
+        wrap.classList.add('done');
+        wrap.classList.remove('tb-dragging','tb-ready','dragging-to-trash');
       });
     } else {
       // 이동 완료 → 위치 저장
@@ -1837,14 +1798,16 @@ function makeTBEl(tb,W,H){
     wrap.classList.remove('dragging-to-trash');
     document.body.style.userSelect='';
     document.body.style.webkitUserSelect='';
-    // 취소: 원래 좌표로 복원 후 renderTB
+    // 취소: DOM 재활용, 원래 좌표로 위치 복원 후 done 상태 명시
     tb.x=origTbX; tb.y=origTbY;
-    const p=ST.pages[ST.cur];if(!p)return;
-    wrap.remove();
-    renderTB(p);
+    const W=cvW(),H=cvH();
+    wrap.style.left=origTbX*W/100+'px';
+    wrap.style.top =origTbY*H/100+'px';
+    wrap.classList.add('done');
+    wrap.classList.remove('tb-dragging','tb-ready','dragging-to-trash');
   });
 
-  wrap.appendChild(ta);wrap.appendChild(del);wrap.appendChild(rhR);
+  wrap.appendChild(ta);wrap.appendChild(rhR);
   CV().appendChild(wrap);
 
   // 기존 텍스트 있으면 완료 상태로, 없으면 편집 상태로 초기화
@@ -1856,28 +1819,25 @@ function makeTBEl(tb,W,H){
 }
 
 // ── #cv 이벤트 ──────────────────────────────
-// edit: 클릭 → 메모 배지 생성
-// text: 클릭 → 텍스트박스 추가
-// 나머지 모드는 각 요소(ci/dl/hs/tb)에서 처리
+// add-hs: 클릭 → 메모 배지 생성 후 edit 복귀
+// add-tb: 클릭 → 텍스트박스 생성 후 edit 복귀
+// edit: 빈 곳 클릭 → 아무 것도 안 함
 function initCVEvents(){
   const cv=CV();
 
+  // add-hs 모드: 이미지 위 클릭 → 메모 생성
   cv.addEventListener('click',e=>{
-    if(mode!=='edit')return;
+    if(mode!=='add-hs')return;
     if(e.target.closest('.hs')||e.target.closest('.tb'))return;
-    // 메모 리사이즈/D&D 직후 click 차단
     if(blockCvClick){blockCvClick=false;return;}
-    if(e.target.closest('.hs-rh')||e.target.closest('.hs-del'))return;
     const p=ST.pages[ST.cur];if(!p||!p.images.length)return;
     const pt=cvPt(e.clientX,e.clientY);
     const W=cvW(),H=cvH();
-    // 클릭 위치가 어떤 이미지 위인지 판별 (z-index 역순 = 위에 있는 이미지 우선)
     const hitImg=[...p.images].reverse().find(im=>{
       const ix=im.x*W/100,iy=im.y*H/100,iw=im.w*W/100,ih=im.h*H/100;
       return pt.x>=ix&&pt.x<=ix+iw&&pt.y>=iy&&pt.y<=iy+ih;
     });
     if(!hitImg){toast('이미지 위에서 메모를 생성하세요');return;}
-    // 이미지 내부 상대 좌표 %로 저장
     const ix=hitImg.x*W/100,iy=hitImg.y*H/100,iw=hitImg.w*W/100,ih=hitImg.h*H/100;
     const rx=(pt.x-ix)/iw*100, ry=(pt.y-iy)/ih*100;
     showConfirmDlg(
@@ -1886,37 +1846,29 @@ function initCVEvents(){
       ()=>{
         const hs={id:Date.now(),imgId:hitImg.id,rx,ry,x:pt.x/W*100,y:pt.y/H*100,
           w:0,h:0,size:32,title:'',text:'',tblData:null,imgData:null,tab:'text'};
-        p.hotspots.push(hs);renderHS(p);renderHSList(p);save();openEdit(hs.id);
-      }
+        p.hotspots.push(hs);renderHS(p);renderHSList(p);save();
+        setMode('edit'); // 생성 후 편집 모드 복귀
+        openEdit(hs.id);
+      },
+      '생성',
+      ()=>{ setMode('edit'); } // 취소 시에도 편집 모드 복귀
     );
   });
 
-  // text 모드: 빈 곳 클릭 → 텍스트박스 추가 (단, 이미 편집 중이면 blur만)
-  // pointerdown에서 activeTextBox 상태를 미리 캡처 (blur보다 먼저 실행됨)
+  // add-tb 모드: 빈 곳 클릭 → 텍스트박스 생성
   let textClickBlocked = false;
   cv.addEventListener('pointerdown',e=>{
-    if(mode!=='text')return;
+    if(mode!=='add-tb')return;
     if(e.target.closest('.tb')){textClickBlocked=false;return;}
-    // 편집 중인 박스가 있으면 → 새 박스 생성 차단 플래그
-    if(activeTextBox!==null){
-      textClickBlocked=true;
-    }else{
-      textClickBlocked=false;
-    }
+    if(activeTextBox!==null){textClickBlocked=true;}
+    else{textClickBlocked=false;}
   });
 
   cv.addEventListener('click',e=>{
-    if(mode!=='text')return;
+    if(mode!=='add-tb')return;
     if(e.target.closest('.ci')||e.target.closest('.hs')||e.target.closest('.tb'))return;
     const p=ST.pages[ST.cur];if(!p||!p.images.length)return;
-
-    // 편집 중이었다면 → blur만 하고 새 박스 생성 안 함
-    if(textClickBlocked){
-      textClickBlocked=false;
-      return;
-    }
-
-    // 새 텍스트박스 생성
+    if(textClickBlocked){textClickBlocked=false;return;}
     const pt=cvPt(e.clientX,e.clientY);
     const W=cvW(),H=cvH();
     if(!p.tboxes)p.tboxes=[];
@@ -1931,11 +1883,14 @@ function initCVEvents(){
         const tb={id:Date.now(),x:cx/W*100,y:cy/H*100,w:25,h:5,text:'',fs:14,color:'#fff'};
         p.tboxes.push(tb);save();
         makeTBEl(tb,W,H);
+        setMode('edit'); // 생성 후 편집 모드 복귀
         requestAnimationFrame(()=>{
           const el=CV().querySelector(`.tb[data-tid="${tb.id}"] textarea`);
           if(el) el.focus();
         });
-      }
+      },
+      '생성',
+      ()=>{ setMode('edit'); } // 취소 시에도 편집 모드 복귀
     );
   });
 }
@@ -2009,59 +1964,35 @@ function clearDraw(){
 }
 
 // ── 모드 ─────────────────────────────────────
-const TIPS={
-  edit:     '이미지 위 클릭 → 메모 생성 | E V D T M',
-  view:     '메모 배지 탭 → 학습 내용 팝업',
-  draw:     'Apple Pencil / 마우스로 필기 | Ctrl+Z 취소',
-  text:     '빈 곳 탭 → 텍스트 박스 추가 | 테두리 드래그 이동',
-  move:     '이미지 드래그 → 이동 | 우하단 ■ 드래그 → 크기 조절 | × 버튼으로 삭제'
-};
-// ── 편집 서브메뉴 ────────────────────────────
-const EDIT_MODES={edit:'메모',text:'텍스트',draw:'필기',move:'이동/크기'};
-const EDIT_ICONS={edit:'📝',text:'🔤',draw:'🖊',move:'✋'};
-
-function toggleEditMenu(){
-  const m=$('editMenu');
-  if(m.classList.contains('open')){closeEditMenu();return;}
-  m.classList.add('open');
-  ['edit','text','draw','move'].forEach(n=>{
-    const b=$('em-'+n);if(b)b.classList.toggle('on',n===mode);
+function updateToolbarMode(m){
+  // 툴바 버튼 on 상태
+  ['bView','bEdit','bDraw'].forEach(id=>{
+    const b=$(id);if(b)b.classList.toggle('on',id==='b'+m.charAt(0).toUpperCase()+m.slice(1));
   });
-  $('drawCtrlSub').classList.toggle('show',mode==='draw');
-  setTimeout(()=>document.addEventListener('click',closeEditMenuOutside,{once:true}),10);
-}
-function closeEditMenuOutside(e){
-  const menu=$('editMenu');
-  if(!menu)return;
-  const trigger=e.target.closest('#bEditMenu,#bnEditMenu');
-  if(!menu.contains(e.target)&&!trigger) closeEditMenu();
-}
-function closeEditMenu(){$('editMenu').classList.remove('open');}
-function setModeMenu(m){
-  ['edit','text','draw','move'].forEach(n=>{
-    const b=$('em-'+n);if(b)b.classList.toggle('on',n===m);
-  });
-  $('drawCtrlSub').classList.toggle('show',m==='draw');
-  if(m!=='draw') closeEditMenu();
-  setMode(m);
-}
-function updateEditLabel(m){
-  const isEdit=Object.keys(EDIT_MODES).includes(m);
-  const icon=EDIT_ICONS[m]||'✏️';
-  const label=EDIT_MODES[m]||'편집';
-  const el=$('editMenuLabel');if(el)el.textContent=label;
-  const bl=$('bnEditMenuLabel');if(bl)bl.textContent=label;
-  const eb=$('bEditMenu');if(eb){eb.classList.toggle('on',isEdit);}
-  const bb=$('bnEditMenu');if(bb){bb.classList.toggle('on',isEdit);}
+  if($('bEdit'))  $('bEdit').classList.toggle('on', m==='edit'||m==='add-hs'||m==='add-tb');
+  if($('bDraw'))  $('bDraw').classList.toggle('on', m==='draw');
+  if($('bView'))  $('bView').classList.toggle('on', m==='view');
+  if($('bAddHs')) $('bAddHs').classList.toggle('on', m==='add-hs');
+  if($('bAddTb')) $('bAddTb').classList.toggle('on', m==='add-tb');
+  // 모바일 하단
+  if($('bnView')) $('bnView').classList.toggle('on', m==='view');
+  if($('bnEdit')) $('bnEdit').classList.toggle('on', m==='edit'||m==='add-hs'||m==='add-tb');
+  if($('bnDraw')) $('bnDraw').classList.toggle('on', m==='draw');
+  // 필기 컨트롤바 표시
+  const dcb=$('drawCtrlBar');
+  const tbb=$('tbBtns');
+  if(dcb&&tbb){
+    if(m==='draw'){dcb.style.display='flex';tbb.style.display='none';}
+    else{dcb.style.display='none';tbb.style.display='flex';}
+  }
 }
 
 function setMode(m){
-  mode=m;
-  // view 버튼
-  const vb=$('bView');if(vb)vb.className='tbtn'+(m==='view'?' on':'');
-  const bnv=$('bnView');if(bnv)bnv.classList.toggle('on',m==='view');
-  // 편집 버튼 레이블
-  updateEditLabel(m);
+  // add-hs / add-tb 는 내부적으로 mode 변수에 저장하고 CSS 클래스도 별도 적용
+  addHsPending = (m==='add-hs');
+  addTbPending = (m==='add-tb');
+  mode = (m==='add-hs'||m==='add-tb') ? m : m;
+  updateToolbarMode(m);
   CV().className='m-'+m;
 
   const dl=DL();
@@ -2079,6 +2010,30 @@ function setMode(m){
     else{dl.style.display='none';}
   }
 }
+
+// 일회성 메모 추가 모드 진입
+function startAddHs(){
+  const p=ST.pages[ST.cur];
+  if(!p||!p.images.length){toast('이미지를 먼저 추가하세요');return;}
+  setMode('add-hs');
+  toast('메모를 추가할 위치를 탭하세요');
+}
+// 일회성 텍스트 추가 모드 진입
+function startAddTb(){
+  const p=ST.pages[ST.cur];
+  if(!p||!p.images.length){toast('이미지를 먼저 추가하세요');return;}
+  setMode('add-tb');
+  toast('텍스트를 추가할 위치를 탭하세요');
+}
+
+// 하위 호환: 기존 서브메뉴/편집메뉴 함수 (호출부 오류 방지용 stub)
+function toggleEditMenu(){}
+function closeEditMenu(){}
+function setModeMenu(m){setMode(m==='move'?'edit':m);}
+function updateEditLabel(){}
+
+// ── 편집 서브메뉴 CSS 관련 stub (draw 제어는 drawCtrlBar로 이관) ──
+function closeEditMenuOutside(){}
 
 // ── 이미지 추가 ──────────────────────────────
 function triggerImg(){$('imgFile').click();}
@@ -2368,11 +2323,13 @@ function handleImport(e){
 
 // ── KEYBOARD ─────────────────────────────────
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeEdit();closeView();closeAdd();closeAllPanels();closePageEdit();}
+  if(e.key==='Escape'){
+    closeEdit();closeView();closeAdd();closeAllPanels();closePageEdit();
+    if(mode==='add-hs'||mode==='add-tb') setMode('edit');
+  }
   if((e.ctrlKey||e.metaKey)&&e.key==='z'){undoDraw();return;}
   if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
-  const map={e:'edit',v:'view',d:'draw',t:'text',m:'move'};
-  if(e.key==='Escape')closeEditMenu();
+  const map={e:'edit',v:'view',d:'draw'};
   if(map[e.key])setMode(map[e.key]);
 });
 $('dlgInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmAdd();});
