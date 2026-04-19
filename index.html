@@ -212,29 +212,66 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #cv.m-text #dl,
 #cv.m-move #dl{pointer-events:none;}
 
-/* 핫스팟 z:30 */
-.hs{position:absolute;z-index:30;border:2px solid rgba(14,165,233,.75);
-  background:rgba(14,165,233,.1);border-radius:3px;cursor:pointer;}
-.hs:hover,.hs:active{background:rgba(14,165,233,.25);}
-/* edit/view 모드에서만 핫스팟 클릭 가능 */
+/* 메모 배지 z:30 */
+.hs{
+  position:absolute;z-index:30;
+  width:32px;height:32px;
+  transform:translate(-50%,-50%);
+  cursor:pointer;
+}
 #cv.m-draw .hs,
 #cv.m-text .hs,
 #cv.m-move .hs{pointer-events:none;}
-.hs-lbl{position:absolute;top:-22px;left:-1px;background:var(--ac);color:#000;font-size:9px;
-  font-family:var(--mono);font-weight:700;padding:2px 6px;border-radius:3px 3px 3px 0;
-  white-space:nowrap;pointer-events:none;}
-.hs-num{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--ac);
-  color:#000;font-size:9px;font-family:var(--mono);font-weight:700;width:19px;height:19px;
-  border-radius:50%;display:flex;align-items:center;justify-content:center;pointer-events:none;}
-.hs-del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;
-  background:var(--rd);color:#fff;font-size:12px;font-weight:700;border:2px solid var(--bg);
-  display:flex;align-items:center;justify-content:center;opacity:0;cursor:pointer;z-index:5;}
+.hs-badge{
+  width:32px;height:32px;border-radius:50%;
+  background:var(--ac);
+  border:2.5px solid rgba(255,255,255,.85);
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+  transition:transform .15s,box-shadow .15s;
+}
+.hs:hover .hs-badge,.hs:active .hs-badge{
+  transform:scale(1.18);
+  box-shadow:0 4px 14px rgba(14,165,233,.6);
+}
+.hs-badge-num{
+  font-size:12px;font-family:var(--mono);font-weight:700;
+  color:#fff;pointer-events:none;line-height:1;
+}
+.hs-tip{
+  position:absolute;bottom:38px;left:50%;transform:translateX(-50%);
+  background:rgba(11,24,40,.92);border:1px solid var(--bdL);
+  color:var(--wh);font-size:10px;font-family:var(--sans);font-weight:500;
+  padding:3px 8px;border-radius:5px;white-space:nowrap;
+  pointer-events:none;opacity:0;transition:opacity .15s;
+  box-shadow:0 2px 8px rgba(0,0,0,.4);
+}
+.hs:hover .hs-tip{opacity:1;}
+.hs-del{
+  position:absolute;top:-6px;right:-6px;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--rd);color:#fff;font-size:11px;font-weight:700;
+  border:2px solid var(--bg);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;cursor:pointer;z-index:5;
+  transition:opacity .15s;
+}
 .hs:hover .hs-del{opacity:1;}
 .hs.showdel .hs-del{opacity:1;}
 #cv:not(.m-edit) .hs-del{display:none!important;}
-/* 드래그 선택 rect */
-.drag-rect{position:absolute;border:2px dashed var(--gr);background:rgba(16,185,129,.08);
-  pointer-events:none;border-radius:2px;z-index:35;}
+/* 배지 크기 조절 핸들 */
+.hs-rh{
+  position:absolute;bottom:-5px;right:-5px;
+  width:14px;height:14px;border-radius:3px;
+  background:var(--gr);border:2px solid var(--bg);
+  cursor:se-resize;z-index:6;
+  opacity:0;touch-action:none;
+  transition:opacity .15s;
+}
+.hs:hover .hs-rh{opacity:1;}
+.hs.showdel .hs-rh{opacity:1;}
+#cv:not(.m-edit) .hs-rh{display:none!important;}
 
 /* 텍스트박스 z:40 */
 .tb{position:absolute;z-index:40;min-width:60px;}
@@ -428,7 +465,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
     <button class="hb" onclick="importData()">📂 불러오기</button>
     <button class="hb" id="rPanelBtn" style="display:none" onclick="togglePanel('R')">📋</button>
     <button class="hb danger" onclick="resetAll()">🗑</button>
-    <button class="stgl" id="btnTR" onclick="toggleSideR()" title="핫스팟 패널">📋</button>
+    <button class="stgl" id="btnTR" onclick="toggleSideR()" title="메모 패널">📋</button>
     <input type="file" id="importFile" accept=".json" style="display:none" onchange="handleImport(event)">
   </div>
 </header>
@@ -444,7 +481,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
 </div>
 <div class="spanel R" id="panelR">
   <div class="sp-hdr">
-    <span class="sp-title">HOTSPOTS</span>
+    <span class="sp-title">MEMO LIST</span>
     <div style="display:flex;align-items:center;gap:7px">
       <span id="hsCountM" style="color:var(--ac);font-size:10px;font-family:var(--mono)"></span>
       <button class="sp-close" onclick="closeAllPanels()">×</button>
@@ -482,7 +519,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
     </div>
     <!-- TOOLBAR -->
     <div id="tb">
-      <button class="tbtn on" id="bEdit"       onclick="setMode('edit')"      title="E">✏️ 영역</button>
+      <button class="tbtn on" id="bEdit"       onclick="setMode('edit')"      title="E">📝 메모</button>
       <button class="tbtn"    id="bView"       onclick="setMode('view')"      title="V">👁 학습</button>
       <button class="tbtn"    id="bDraw"       onclick="setMode('draw')"      title="D">🖊 필기</button>
       <button class="tbtn"    id="bText"       onclick="setMode('text')"      title="T">🔤 텍스트</button>
@@ -490,7 +527,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
       <button class="tbtn"    id="bMove"       onclick="setMode('move')"      title="M">✋ 이동/크기</button>
       <div class="tsep"></div>
       <button class="tbtn" onclick="triggerImg()">🖼 이미지 추가</button>
-      <button class="tbtn del" onclick="clearHotspots()">🗑 영역삭제</button>
+      <button class="tbtn del" onclick="clearHotspots()">🗑 메모삭제</button>
       <input type="file" id="imgFile" accept="image/*" multiple style="display:none" onchange="loadImg(event)">
       <div id="drawCtrl">
         <div class="dcsep"></div>
@@ -512,19 +549,19 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
         <button class="tbtn" onclick="undoDraw()" style="height:30px;padding:0 9px;font-size:11px">↩ 취소</button>
         <button class="tbtn del" onclick="clearDraw()" style="height:30px;padding:0 9px;font-size:11px">🗑 전체</button>
       </div>
-      <span class="ttip" id="tip">드래그로 핫스팟 생성 | E V D T M Z</span>
+      <span class="ttip" id="tip">클릭으로 메모 생성 | E V D T M Z</span>
     </div>
   </div>
 
   <!-- RIGHT -->
   <div id="sideR">
-    <div class="side-hdr"><span>핫스팟 목록</span><span class="sbadge" id="hsCnt">0</span></div>
+    <div class="side-hdr"><span>메모 목록</span><span class="sbadge" id="hsCnt">0</span></div>
     <div id="hsList"></div>
   </div>
 </div>
 
 <nav id="bnav">
-  <button class="bnt on" id="bnEdit"      onclick="setMode('edit')">      <span class="bi">✏️</span><span>영역</span></button>
+  <button class="bnt on" id="bnEdit"      onclick="setMode('edit')">      <span class="bi">✏️</span><span>메모</span></button>
   <button class="bnt"    id="bnView"      onclick="setMode('view')">      <span class="bi">👁</span><span>학습</span></button>
   <button class="bnt"    id="bnDraw"      onclick="setMode('draw')">      <span class="bi">🖊</span><span>필기</span></button>
   <button class="bnt"    id="bnText"      onclick="setMode('text')">      <span class="bi">🔤</span><span>텍스트</span></button>
@@ -983,7 +1020,7 @@ function initPageDnD(container){
     if(!wasDragging){
       // 단순 클릭 — 페이지 로드 (이름 편집은 pname/fname onclick 담당)
       if(savedType==='page'){
-        // pname 클릭이 아닌 영역(아이콘, 빈 공간)에서 온 경우만 로드
+        // pname 클릭이 아닌 메모(아이콘, 빈 공간)에서 온 경우만 로드
         if(!e.target.closest('.pname'))loadPageC(parseInt(savedData));
       }
       // 폴더는 farr(▶) onclick 또는 fname onclick이 처리
@@ -1152,11 +1189,19 @@ function renderImgs(page){
       const nw=Math.max(40,rzStart.ow+(e.clientX-rzStart.ox));
       const nh=Math.max(30,rzStart.oh+(e.clientY-rzStart.oy));
       wrap.style.width=nw+'px';wrap.style.height=nh+'px';
+      // 리사이즈 중 종속 메모 실시간 추적
+      const _tp=ST.pages[ST.cur];
+      if(_tp){
+        const _im=_tp.images.find(x=>x.id===im.id);
+        if(_im){_im.w=nw/cvW()*100;_im.h=nh/cvH()*100;renderHS(_tp);}
+      }
     });
     rh.addEventListener('pointerup',e=>{
       if(!rzStart)return;
       im.w=wrap.offsetWidth/cvW()*100;im.h=wrap.offsetHeight/cvH()*100;
       save();rzStart=null;
+      // 종속된 메모 배지 위치 업데이트
+      const _p=ST.pages[ST.cur];if(_p)renderHS(_p);
     });
     rh.addEventListener('pointercancel',()=>{rzStart=null;});
     // 이동 드래그 — 핵심 수정: cvPt()로 #cv 기준 좌표 사용
@@ -1182,6 +1227,12 @@ function renderImgs(page){
       const ny=Math.max(0,Math.min(cvH()-20, p2.y - mvStart.oy));
       wrap.style.left=nx+'px';
       wrap.style.top =ny+'px';
+      // 이동 중 종속 메모 실시간 추적
+      const _tp=ST.pages[ST.cur];
+      if(_tp){
+        const _im=_tp.images.find(x=>x.id===im.id);
+        if(_im){_im.x=nx/cvW()*100;_im.y=ny/cvH()*100;renderHS(_tp);}
+      }
     });
     wrap.addEventListener('pointerup',e=>{
       if(!mvStart)return;
@@ -1189,6 +1240,8 @@ function renderImgs(page){
       im.y=parseFloat(wrap.style.top)/cvH()*100;
       save();mvStart=null;
       wrap.style.outline='';
+      // 종속된 메모 배지 위치 업데이트
+      const _p=ST.pages[ST.cur];if(_p)renderHS(_p);
     });
     wrap.addEventListener('pointercancel',()=>{mvStart=null;wrap.style.outline='';});
     wrap.appendChild(img);wrap.appendChild(del);wrap.appendChild(rh);
@@ -1196,19 +1249,69 @@ function renderImgs(page){
   });
 }
 
-// ── 핫스팟 렌더 ──────────────────────────────
+// ── 이미지 기준 메모 좌표 → 캔버스 px 변환 ──
+function hsPxPos(hs){
+  const W=cvW(),H=cvH();
+  if(hs.imgId!=null){
+    const p=ST.pages[ST.cur];
+    const im=p&&p.images.find(x=>x.id===hs.imgId);
+    if(im){
+      const ix=im.x*W/100, iy=im.y*H/100;
+      const iw=im.w*W/100, ih=im.h*H/100;
+      return {x: ix + hs.rx/100*iw, y: iy + hs.ry/100*ih};
+    }
+  }
+  // 구버전 호환: 절대 좌표
+  return {x: hs.x*W/100, y: hs.y*H/100};
+}
+
+// ── 메모 배지 렌더 ───────────────────────────
 function renderHS(page){
   CV().querySelectorAll('.hs').forEach(e=>e.remove());
-  const W=cvW(),H=cvH();
   page.hotspots.forEach((hs,i)=>{
     const el=document.createElement('div');
     el.className='hs';el.dataset.id=hs.id;
-    el.style.cssText=`left:${hs.x*W/100}px;top:${hs.y*H/100}px;width:${hs.w*W/100}px;height:${hs.h*H/100}px;position:absolute;`;
+    const sz=hs.size||32;
+    const pos=hsPxPos(hs);
+    el.style.cssText=`left:${pos.x}px;top:${pos.y}px;width:${sz}px;height:${sz}px;position:absolute;`;
+    // 배지 원형
+    const badge=document.createElement('div');badge.className='hs-badge';
+    badge.style.cssText=`width:${sz}px;height:${sz}px;`;
+    const num=document.createElement('span');num.className='hs-badge-num';
+    num.style.fontSize=Math.max(9,Math.round(sz*0.38))+'px';
+    num.textContent=i+1;
+    badge.appendChild(num);
+    // 툴팁
+    const tip=document.createElement('div');tip.className='hs-tip';
+    tip.textContent=hs.title||`메모 ${i+1}`;
+    // 삭제 버튼
     const del=document.createElement('button');del.className='hs-del';del.textContent='×';
-    del.addEventListener('pointerup',e=>{e.stopPropagation();if(confirm(`"${hs.title||`영역${i+1}`}" 삭제?`))delHS(hs.id);});
-    el.appendChild(del);
+    del.addEventListener('pointerup',e=>{e.stopPropagation();if(confirm(`"${hs.title||`메모 ${i+1}`}" 삭제?`))delHS(hs.id);});
+    // 크기 조절 핸들
+    const rh=document.createElement('div');rh.className='hs-rh';
+    let rzStart=null;
+    rh.addEventListener('pointerdown',e=>{
+      e.stopPropagation();e.preventDefault();
+      rh.setPointerCapture(e.pointerId);
+      rzStart={ox:e.clientX,oy:e.clientY,os:sz};
+    });
+    rh.addEventListener('pointermove',e=>{
+      if(!rzStart)return;
+      const delta=Math.max(e.clientX-rzStart.ox, e.clientY-rzStart.oy);
+      const ns=Math.max(24,Math.min(64,rzStart.os+delta));
+      el.style.width=ns+'px';el.style.height=ns+'px';
+      badge.style.width=ns+'px';badge.style.height=ns+'px';
+      num.style.fontSize=Math.max(9,Math.round(ns*0.38))+'px';
+    });
+    rh.addEventListener('pointerup',e=>{
+      if(!rzStart)return;
+      const ns=parseInt(el.style.width);
+      hs.size=ns;save();rzStart=null;
+    });
+    rh.addEventListener('pointercancel',()=>{rzStart=null;});
+    el.appendChild(badge);el.appendChild(tip);el.appendChild(del);el.appendChild(rh);
     el.addEventListener('pointerup',e=>{
-      if(e.target===del)return;e.stopPropagation();
+      if(e.target===del||e.target===rh)return;e.stopPropagation();
       if(mode==='view')openView(hs.id);
       else if(mode==='edit'){
         if(e.pointerType==='touch'||e.pointerType==='pen'){
@@ -1405,48 +1508,31 @@ function makeTBEl(tb,W,H){
 }
 
 // ── #cv 이벤트 ──────────────────────────────
-// edit: 드래그 → 핫스팟 생성
+// edit: 클릭 → 메모 배지 생성
 // text: 클릭 → 텍스트박스 추가
 // 나머지 모드는 각 요소(ci/dl/hs/tb)에서 처리
 function initCVEvents(){
   const cv=CV();
-  let drag=false,dStart=null,sel=null;
 
-  cv.addEventListener('pointerdown',e=>{
+  cv.addEventListener('click',e=>{
     if(mode!=='edit')return;
-    // .ci .hs .tb 위에서 시작하면 무시
-    if(e.target.closest('.ci')||e.target.closest('.hs')||e.target.closest('.tb'))return;
+    if(e.target.closest('.hs')||e.target.closest('.tb'))return;
     const p=ST.pages[ST.cur];if(!p||!p.images.length)return;
-    drag=true;cv.setPointerCapture(e.pointerId);
-    dStart=cvPt(e.clientX,e.clientY);
-    sel=document.createElement('div');sel.className='drag-rect';
-    sel.style.cssText=`left:${dStart.x}px;top:${dStart.y}px;width:0;height:0;position:absolute;`;
-    cv.appendChild(sel);e.preventDefault();
-  });
-
-  cv.addEventListener('pointermove',e=>{
-    if(!drag||!sel)return;
     const pt=cvPt(e.clientX,e.clientY);
-    sel.style.left  =Math.min(dStart.x,pt.x)+'px';
-    sel.style.top   =Math.min(dStart.y,pt.y)+'px';
-    sel.style.width =Math.abs(pt.x-dStart.x)+'px';
-    sel.style.height=Math.abs(pt.y-dStart.y)+'px';
-  });
-
-  cv.addEventListener('pointerup',e=>{
-    if(!drag||!sel)return;drag=false;
-    const sl=parseFloat(sel.style.left),st=parseFloat(sel.style.top);
-    const sw=parseFloat(sel.style.width),sh=parseFloat(sel.style.height);
-    sel.remove();sel=null;
-    if(sw<10||sh<10)return;
     const W=cvW(),H=cvH();
-    const p=ST.pages[ST.cur];if(!p)return;
-    const hs={id:Date.now(),x:sl/W*100,y:st/H*100,w:sw/W*100,h:sh/H*100,
-      title:'',text:'',tblData:null,imgData:null,tab:'text'};
+    // 클릭 위치가 어떤 이미지 위인지 판별 (z-index 역순 = 위에 있는 이미지 우선)
+    const hitImg=[...p.images].reverse().find(im=>{
+      const ix=im.x*W/100,iy=im.y*H/100,iw=im.w*W/100,ih=im.h*H/100;
+      return pt.x>=ix&&pt.x<=ix+iw&&pt.y>=iy&&pt.y<=iy+ih;
+    });
+    if(!hitImg){toast('이미지 위에서 메모를 생성하세요');return;}
+    // 이미지 내부 상대 좌표 %로 저장
+    const ix=hitImg.x*W/100,iy=hitImg.y*H/100,iw=hitImg.w*W/100,ih=hitImg.h*H/100;
+    const rx=(pt.x-ix)/iw*100, ry=(pt.y-iy)/ih*100;
+    const hs={id:Date.now(),imgId:hitImg.id,rx,ry,x:pt.x/W*100,y:pt.y/H*100,
+      w:0,h:0,size:32,title:'',text:'',tblData:null,imgData:null,tab:'text'};
     p.hotspots.push(hs);renderHS(p);renderHSList(p);save();openEdit(hs.id);
   });
-
-  cv.addEventListener('pointercancel',()=>{if(sel){sel.remove();sel=null;}drag=false;});
 
   // text 모드: 빈 곳 클릭 → 텍스트박스 추가 (단, 이미 편집 중이면 blur만)
   // pointerdown에서 activeTextBox 상태를 미리 캡처 (blur보다 먼저 실행됨)
@@ -1561,8 +1647,8 @@ function clearDraw(){
 
 // ── 모드 ─────────────────────────────────────
 const TIPS={
-  edit:     '이미지 위 드래그 → 핫스팟 생성 | E V D T M',
-  view:     '파란 영역 탭 → 학습 내용 팝업',
+  edit:     '이미지 위 클릭 → 메모 생성 | E V D T M',
+  view:     '메모 배지 탭 → 학습 내용 팝업',
   draw:     'Apple Pencil / 마우스로 필기 | Ctrl+Z 취소',
   text:     '빈 곳 탭 → 텍스트 박스 추가 | 테두리 드래그 이동',
   move:     '이미지 드래그 → 이동 | 우하단 ■ 드래그 → 크기 조절 | × 버튼으로 삭제'
@@ -1608,12 +1694,23 @@ function loadImg(e){
   files.forEach((file,fi)=>{
     const r=new FileReader();
     r.onload=ev=>{
-      // 초기 위치: fi번째 이미지는 약간씩 offset, 크기는 캔버스 꽉 채움
-      const offset=fi*3; // 3% offset
-      page.images.push({id:Date.now()+fi+Math.random(),data:ev.target.result,
-        x:offset,y:offset,w:100-offset,h:100-offset});
-      done++;
-      if(done===files.length){save();loadPage(ST.cur);toast(`이미지 ${files.length}장 추가됨`);}
+      // 이미지 자연 크기를 읽어 비율 유지하면서 캔버스의 70% 이내로 맞춤
+      const imgEl=new Image();
+      imgEl.onload=()=>{
+        const W=cvW(),H=cvH();
+        const maxW=W*0.70, maxH=H*0.70;
+        const scale=Math.min(maxW/imgEl.naturalWidth, maxH/imgEl.naturalHeight, 1);
+        const iw=imgEl.naturalWidth*scale, ih=imgEl.naturalHeight*scale;
+        // 여러 장일 때 조금씩 offset
+        const offset=fi*3;
+        const px=Math.max(0,(W-iw)/2/W*100+offset);
+        const py=Math.max(0,(H-ih)/2/H*100+offset);
+        page.images.push({id:Date.now()+fi+Math.random(),data:ev.target.result,
+          x:px,y:py,w:iw/W*100,h:ih/H*100});
+        done++;
+        if(done===files.length){save();loadPage(ST.cur);toast(`이미지 ${files.length}장 추가됨`);}
+      };
+      imgEl.src=ev.target.result;
     };
     r.readAsDataURL(file);
   });
@@ -1641,7 +1738,7 @@ function saveHS(){
 function openView(id){
   const p=ST.pages[ST.cur];const hs=p.hotspots.find(h=>h.id===id);if(!hs)return;
   viewId=id;const i=p.hotspots.indexOf(hs);
-  $('vBadge').textContent=i+1;$('vTitle').textContent=hs.title||`영역${i+1}`;
+  $('vBadge').textContent=i+1;$('vTitle').textContent=hs.title||`메모${i+1}`;
   let c='';
   if(hs.text)c+=`<div class="vt">${eh(hs.text)}</div>`;
   if(hs.tblData&&hs.tblData.length){c+='<table class="vtbl">';hs.tblData.forEach((row,ri)=>{c+='<tr>';row.forEach(cell=>{const t=ri===0?'th':'td';c+=`<${t}>${eh(cell)}</${t}>`;});c+='</tr>';});c+='</table>';}
@@ -1660,7 +1757,7 @@ function renderHSList(page){
   page.hotspots.forEach((hs,i)=>{
     h+=`<div class="hsc" data-hsid="${hs.id}">
       <div class="hsc-top">
-      <div class="hsc-title">${eh(hs.title||`영역${i+1}`)}</div>
+      <div class="hsc-n">${i+1}</div><div class="hsc-title">${eh(hs.title||`메모 ${i+1}`)}</div>
       <button class="hsc-del" onclick="event.stopPropagation();delHS(${hs.id})">×</button></div>
       <div class="hsc-prev">${eh(hs.text||'내용 없음')}</div></div>`;
   });
@@ -1670,7 +1767,7 @@ function renderHSList(page){
 }
 function renderEmptyHS(){
   $('hsCnt').textContent=0;
-  $('hsList').innerHTML='<div class="ehs"><div style="font-size:28px;opacity:.4">📍</div><div>핫스팟이 없습니다</div></div>';
+  $('hsList').innerHTML='<div class="ehs"><div style="font-size:28px;opacity:.4">📝</div><div>메모가 없습니다</div></div>';
   if($('panelR').classList.contains('open'))$('hsListM').innerHTML=$('hsList').innerHTML;
 }
 
@@ -1750,10 +1847,10 @@ function hsClick(id){closeAllPanels();if(mode==='view')openView(id);else if(mode
 function delHS(id){
   if(!confirm('삭제?'))return;
   const p=ST.pages[ST.cur];p.hotspots=p.hotspots.filter(h=>h.id!==id);
-  renderHS(p);renderHSList(p);save();toast('삭제됨');
+  renderHS(p);renderHSList(p);save();toast('메모 삭제됨');
 }
 function clearHotspots(){
-  if(!confirm('모든 핫스팟을 삭제하시겠습니까?'))return;
+  if(!confirm('모든 메모를 삭제하시겠습니까?'))return;
   const p=ST.pages[ST.cur];if(!p)return;
   p.hotspots=[];renderHS(p);renderHSList(p);save();toast('전체 삭제됨');
 }
