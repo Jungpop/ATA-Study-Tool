@@ -1309,10 +1309,12 @@ function renderHS(page){
       num.style.fontSize=Math.max(9,Math.round(ns*0.38))+'px';
     });
     rh.addEventListener('pointerup',e=>{
+      e.stopPropagation();e.preventDefault();
       if(!rzStart)return;
       const ns=parseInt(el.style.width);
       hs.size=ns;save();rzStart=null;
     });
+    rh.addEventListener('click',e=>{e.stopPropagation();e.preventDefault();});
     rh.addEventListener('pointercancel',()=>{rzStart=null;});
     // edit 모드 진입 시 이미 showdel 상태이면 즉시 적용
     if(mode==='edit') el.classList.add('showdel');
@@ -1370,6 +1372,7 @@ function renderHS(page){
       const wasDragging=isDragging;
       resetMV();
       if(wasDragging){
+        e.stopPropagation();e.preventDefault();
         // 이동 완료: 새 위치를 이미지 상대좌표로 저장
         const W=cvW(),H=cvH();
         const cx=parseFloat(el.style.left)+( hs.size||32)/2;
@@ -1383,7 +1386,7 @@ function renderHS(page){
         }
         hs.x=cx/W*100; hs.y=cy/H*100;
         save();
-        return; // 드래그 완료 → 클릭 이벤트 처리 안 함
+        return;
       }
       // 단순 탭 → 팝업
       if(e.target===del||e.target===rh)return;
@@ -1595,6 +1598,8 @@ function initCVEvents(){
   cv.addEventListener('click',e=>{
     if(mode!=='edit')return;
     if(e.target.closest('.hs')||e.target.closest('.tb'))return;
+    // 메모 리사이즈/D&D 직후 click 버블링 차단
+    if(e.target.closest('.hs-rh')||e.target.closest('.hs-del'))return;
     const p=ST.pages[ST.cur];if(!p||!p.images.length)return;
     const pt=cvPt(e.clientX,e.clientY);
     const W=cvW(),H=cvH();
@@ -1817,7 +1822,11 @@ function openEdit(id){
   switchTab(hs.tab||'text');
   $('editModal').style.display='flex';setTimeout(()=>$('eTitle').focus(),80);
 }
-function closeEdit(){$('editModal').style.display='none';editId=null;}
+function closeEdit(){
+  $('editModal').style.display='none';editId=null;
+  // edit 모드면 showdel UI 복원
+  if(mode==='edit') CV().querySelectorAll('.hs').forEach(h=>h.classList.add('showdel'));
+}
 function saveHS(){
   const p=ST.pages[ST.cur];const hs=p.hotspots.find(h=>h.id===editId);if(!hs)return;
   hs.title=$('eTitle').value;hs.text=$('eText').value;hs.tblData=tblGet();hs.imgData=popImg;
