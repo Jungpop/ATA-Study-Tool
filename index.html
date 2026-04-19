@@ -1333,6 +1333,8 @@ function renderImgs(page){
       wrap.classList.remove('dragging-to-trash');
       wrap.style.outline='';
       trashHide();
+      document.body.style.userSelect='';
+      document.body.style.webkitUserSelect='';
     }
     wrap.addEventListener('pointerdown',e=>{
       if(mode!=='move')return;
@@ -1340,6 +1342,9 @@ function renderImgs(page){
       e.stopPropagation();e.preventDefault();
       const p2=cvPt(e.clientX,e.clientY);
       mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top),pid:e.pointerId};
+      // 롱프레스 중 텍스트 선택 방지
+      document.body.style.userSelect='none';
+      document.body.style.webkitUserSelect='none';
       mvLpTimer=setTimeout(()=>{
         mvDragging=true;
         wrap.setPointerCapture(mvStart.pid);
