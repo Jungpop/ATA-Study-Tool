@@ -1231,6 +1231,8 @@ function makeTBEl(tb,W,H){
   const ta=document.createElement('textarea');
   ta.value=tb.text||'';ta.placeholder='텍스트 입력…';
   ta.style.cssText=`font-size:${tb.fs||14}px;color:${tb.color||'#fff'};`;
+  // ① readOnly=true 상태로 생성 → focus() 시 키보드 안 올라옴 = 레이아웃 고정
+  ta.readOnly=true;
 
   // 자동 높이 조절 함수
   function autoHeight(){
@@ -1248,22 +1250,17 @@ function makeTBEl(tb,W,H){
 
   ta.addEventListener('input',autoHeight);
 
-  // 포커스: activeTextBox 설정, 스크롤/뷰포트 고정
+  // 포커스: activeTextBox 설정
   ta.addEventListener('focus',()=>{
     activeTextBox=tb.id;
-    // 모바일 키보드로 인한 레이아웃 밀림 방어
-    const sx=window.scrollX, sy=window.scrollY;
-    setTimeout(()=>window.scrollTo(sx,sy),80);
-    // visualViewport 리사이즈(키보드 팝업)로 인한 스크롤 추가 방어
-    if(window.visualViewport){
-      const onVVResize=()=>window.scrollTo(sx,sy);
-      window.visualViewport.addEventListener('resize',onVVResize,{once:true});
-    }
+    // ② 다음 rAF에서 readOnly 해제 → 위치 확정 후 키보드 팝업
+    requestAnimationFrame(()=>{ ta.readOnly=false; });
   });
 
-  // 포커스 해제: activeTextBox 초기화
+  // 포커스 해제: activeTextBox 초기화 + readOnly 복원(다음 포커스를 위해)
   ta.addEventListener('blur',()=>{
     if(activeTextBox===tb.id) activeTextBox=null;
+    ta.readOnly=true;
   });
 
   ta.addEventListener('pointerdown',e=>e.stopPropagation());
@@ -1413,10 +1410,11 @@ function initCVEvents(){
     const tb={id:Date.now(),x:pt.x/W*100,y:pt.y/H*100,w:25,h:5,text:'',fs:14,color:'#fff'};
     p.tboxes.push(tb);save();
     makeTBEl(tb,W,H);
-    setTimeout(()=>{
+    // readOnly=true 상태로 focus → rAF에서 readOnly 해제 (레이아웃 밀림 방지)
+    requestAnimationFrame(()=>{
       const el=CV().querySelector(`.tb[data-tid="${tb.id}"] textarea`);
       if(el) el.focus();
-    },30);
+    });
   });
 }
 
