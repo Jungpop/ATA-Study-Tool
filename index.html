@@ -824,19 +824,13 @@ function pH(p,i){
 function loadPageC(i){closeAllPanels();loadPage(i);}
 
 // ── 인라인 이름 편집 ──────────────────────────
-// 모바일에서 input focus 시 키보드가 올라오면서 화면이 스크롤되는 현상 방지:
-// focus 전 scrollX/Y를 저장하고 focus 후 즉시 복원
-function lockScroll(inp){
-  const sx=window.scrollX,sy=window.scrollY;
-  inp.addEventListener('focus',()=>{
-    requestAnimationFrame(()=>window.scrollTo(sx,sy));
-    setTimeout(()=>window.scrollTo(sx,sy),100);
-  },{once:true});
-}
+// iOS Safari에서 input focus 시 viewport가 밀리는 현상 방지:
+// ① readOnly=true 상태로 DOM에 삽입 + focus() → 키보드 안 올라옴 = 레이아웃 고정
+// ② 다음 rAF에서 readOnly=false → 이때 키보드가 올라와도 이미 위치 확정된 상태
 function makeInlineInput(cur, onCommit, onCancel){
   const inp=document.createElement('input');
   inp.className='inline-edit';inp.value=cur;
-  lockScroll(inp);
+  inp.readOnly=true;  // ← 핵심: DOM 삽입 전 readOnly
   let committed=false;
   function commit(){
     if(committed)return;committed=true;
@@ -853,6 +847,14 @@ function makeInlineInput(cur, onCommit, onCancel){
   inp.addEventListener('click',e=>e.stopPropagation());
   return inp;
 }
+function focusInlineInput(inp){
+  inp.focus();
+  // readOnly 해제는 다음 rAF — focus로 스크롤 고정 후 편집 활성화
+  requestAnimationFrame(()=>{
+    inp.readOnly=false;
+    inp.select();
+  });
+}
 function startInlineEditPage(idx, spanEl){
   if(spanEl.querySelector('input'))return;
   const page=ST.pages[idx]; if(!page)return;
@@ -862,7 +864,7 @@ function startInlineEditPage(idx, spanEl){
     ()=>{spanEl.textContent=cur;}
   );
   spanEl.textContent='';spanEl.appendChild(inp);
-  inp.focus();inp.select();
+  focusInlineInput(inp);
 }
 function startInlineEditFolder(fid, spanEl){
   if(spanEl.querySelector('input'))return;
@@ -873,7 +875,7 @@ function startInlineEditFolder(fid, spanEl){
     ()=>{spanEl.textContent=cur;}
   );
   spanEl.textContent='';spanEl.appendChild(inp);
-  inp.focus();inp.select();
+  focusInlineInput(inp);
 }
 function toggleF(fid){const f=ST.folders.find(x=>x.id==fid);if(!f)return;f.open=!f.open;save();renderPages();}
 function delFolder(fid){
