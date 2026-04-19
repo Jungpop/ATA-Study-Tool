@@ -1541,7 +1541,9 @@ function makeTBEl(tb,W,H){
   });
   rhR.addEventListener('pointermove',e=>{
     if(!rzW)return;
-    const nw=Math.max(80, rzW.ow+(e.clientX-rzW.ox));
+    // 캔버스 우측 경계를 넘지 않도록 최댓값 클램핑
+    const maxW=cvW()-parseFloat(wrap.style.left);
+    const nw=Math.max(80, Math.min(maxW, rzW.ow+(e.clientX-rzW.ox)));
     wrap.style.width=nw+'px';
     autoHeight();
   });
