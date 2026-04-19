@@ -272,6 +272,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .hs:hover .hs-rh{opacity:1;}
 .hs.showdel .hs-rh{opacity:1;}
 #cv:not(.m-edit) .hs-rh{display:none!important;}
+/* 메모 D&D 상태 */
+@keyframes hs-lp-pulse{0%{box-shadow:0 0 0 0 rgba(14,165,233,.6);}70%{box-shadow:0 0 0 8px rgba(14,165,233,0);}100%{box-shadow:0 0 0 0 rgba(14,165,233,0);}}
+.hs.hs-ready .hs-badge{animation:hs-lp-pulse .9s ease-out;}
+.hs.hs-dragging{opacity:.75;z-index:50!important;}
+.hs.hs-dragging .hs-badge{box-shadow:0 6px 20px rgba(14,165,233,.7);transform:scale(1.15);}
 
 /* 텍스트박스 z:40 */
 .tb{position:absolute;z-index:40;min-width:60px;}
@@ -1309,9 +1314,80 @@ function renderHS(page){
       hs.size=ns;save();rzStart=null;
     });
     rh.addEventListener('pointercancel',()=>{rzStart=null;});
+    // edit 모드 진입 시 이미 showdel 상태이면 즉시 적용
+    if(mode==='edit') el.classList.add('showdel');
     el.appendChild(badge);el.appendChild(tip);el.appendChild(del);el.appendChild(rh);
+
+    // ── 롱프레스 D&D 이동 (edit 모드) ──
+    let lpTimer=null, isDragging=false, mvOffset=null;
+
+    function cancelLP(){ clearTimeout(lpTimer); lpTimer=null; el.classList.remove('hs-ready'); }
+    function resetMV(){ cancelLP(); isDragging=false; mvOffset=null; el.classList.remove('hs-dragging','hs-ready'); }
+
+    // 종속 이미지 현재 px 경계 반환
+    function imgBounds(){
+      const W=cvW(),H=cvH();
+      const p=ST.pages[ST.cur];
+      const im=p&&hs.imgId!=null&&p.images.find(x=>x.id===hs.imgId);
+      if(!im) return null;
+      return {x:im.x*W/100, y:im.y*H/100, w:im.w*W/100, h:im.h*H/100};
+    }
+
+    el.addEventListener('pointerdown',e=>{
+      if(mode!=='edit')return;
+      if(e.target===del||e.target===rh)return;
+      e.stopPropagation();
+      cancelLP();
+      const pt=cvPt(e.clientX,e.clientY);
+      mvOffset={ox:pt.x-parseFloat(el.style.left), oy:pt.y-parseFloat(el.style.top)};
+      el.classList.add('hs-ready');
+      lpTimer=setTimeout(()=>{
+        isDragging=true;
+        el.classList.remove('hs-ready');
+        el.classList.add('hs-dragging');
+        try{el.setPointerCapture(e.pointerId);}catch(err){}
+        toast('메모 이동 모드');
+      },900);
+    });
+
+    el.addEventListener('pointermove',e=>{
+      if(!isDragging||!mvOffset)return;
+      e.preventDefault();
+      const pt=cvPt(e.clientX,e.clientY);
+      const sz=hs.size||32;
+      const b=imgBounds();
+      let nx=pt.x-mvOffset.ox, ny=pt.y-mvOffset.oy;
+      if(b){
+        // 이미지 경계 안으로 클램핑 (배지 중앙 기준)
+        nx=Math.max(b.x-sz/2, Math.min(b.x+b.w-sz/2, nx));
+        ny=Math.max(b.y-sz/2, Math.min(b.y+b.h-sz/2, ny));
+      }
+      el.style.left=nx+'px';
+      el.style.top =ny+'px';
+    },{passive:false});
+
     el.addEventListener('pointerup',e=>{
-      if(e.target===del||e.target===rh)return;e.stopPropagation();
+      const wasDragging=isDragging;
+      resetMV();
+      if(wasDragging){
+        // 이동 완료: 새 위치를 이미지 상대좌표로 저장
+        const W=cvW(),H=cvH();
+        const cx=parseFloat(el.style.left)+( hs.size||32)/2;
+        const cy=parseFloat(el.style.top) +( hs.size||32)/2;
+        const p=ST.pages[ST.cur];
+        const im=p&&hs.imgId!=null&&p.images.find(x=>x.id===hs.imgId);
+        if(im){
+          const ix=im.x*W/100,iy=im.y*H/100,iw=im.w*W/100,ih=im.h*H/100;
+          hs.rx=Math.max(0,Math.min(100,(cx-ix)/iw*100));
+          hs.ry=Math.max(0,Math.min(100,(cy-iy)/ih*100));
+        }
+        hs.x=cx/W*100; hs.y=cy/H*100;
+        save();
+        return; // 드래그 완료 → 클릭 이벤트 처리 안 함
+      }
+      // 단순 탭 → 팝업
+      if(e.target===del||e.target===rh)return;
+      e.stopPropagation();
       if(mode==='view')openView(hs.id);
       else if(mode==='edit'){
         if(e.pointerType==='touch'||e.pointerType==='pen'){
@@ -1320,6 +1396,8 @@ function renderHS(page){
         }else openEdit(hs.id);
       }
     });
+
+    el.addEventListener('pointercancel',resetMV);
     CV().appendChild(el);
   });
 }
@@ -1654,6 +1732,10 @@ const TIPS={
   move:     '이미지 드래그 → 이동 | 우하단 ■ 드래그 → 크기 조절 | × 버튼으로 삭제'
 };
 function setMode(m){
+  // edit 모드 나갈 때 showdel 전체 해제
+  if(mode==='edit'&&m!=='edit'){
+    CV().querySelectorAll('.hs.showdel').forEach(h=>h.classList.remove('showdel'));
+  }
   mode=m;
   ['edit','view','draw','text','move'].forEach(n=>{
     const b=$('b'+n.charAt(0).toUpperCase()+n.slice(1));if(b)b.className='tbtn'+(n===m?' on':'');
@@ -1664,6 +1746,13 @@ function setMode(m){
   CV().className='m-'+m;
   $('tip').textContent=TIPS[m]||'';
   $('drawCtrl').classList.toggle('show',m==='draw');
+  // edit 모드 진입 시 메모가 있으면 즉시 showdel 표시
+  if(m==='edit'){
+    const p=ST.pages[ST.cur];
+    if(p&&p.hotspots&&p.hotspots.length){
+      CV().querySelectorAll('.hs').forEach(h=>h.classList.add('showdel'));
+    }
+  }
   const dl=DL();
   const p=ST.pages[ST.cur];
   const W=cvW(), H=cvH();
