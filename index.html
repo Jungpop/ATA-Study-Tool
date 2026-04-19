@@ -824,49 +824,56 @@ function pH(p,i){
 function loadPageC(i){closeAllPanels();loadPage(i);}
 
 // ── 인라인 이름 편집 ──────────────────────────
-function startInlineEditPage(idx, spanEl){
-  if(spanEl.querySelector('input'))return; // 이미 편집 중
-  const page=ST.pages[idx]; if(!page)return;
-  const cur=page.name;
+// 모바일에서 input focus 시 키보드가 올라오면서 화면이 스크롤되는 현상 방지:
+// focus 전 scrollX/Y를 저장하고 focus 후 즉시 복원
+function lockScroll(inp){
+  const sx=window.scrollX,sy=window.scrollY;
+  inp.addEventListener('focus',()=>{
+    requestAnimationFrame(()=>window.scrollTo(sx,sy));
+    setTimeout(()=>window.scrollTo(sx,sy),100);
+  },{once:true});
+}
+function makeInlineInput(cur, onCommit, onCancel){
   const inp=document.createElement('input');
   inp.className='inline-edit';inp.value=cur;
-  spanEl.textContent='';spanEl.appendChild(inp);
-  inp.focus();inp.select();
+  lockScroll(inp);
+  let committed=false;
   function commit(){
+    if(committed)return;committed=true;
     const v=inp.value.trim()||cur;
-    page.name=v;
-    save();renderPages();
+    onCommit(v);
   }
   inp.addEventListener('keydown',e=>{
     if(e.key==='Enter'){e.preventDefault();commit();}
-    if(e.key==='Escape'){spanEl.textContent=eh(cur);}
+    if(e.key==='Escape'){committed=true;onCancel();}
     e.stopPropagation();
   });
   inp.addEventListener('blur',commit);
   inp.addEventListener('pointerdown',e=>e.stopPropagation());
   inp.addEventListener('click',e=>e.stopPropagation());
+  return inp;
+}
+function startInlineEditPage(idx, spanEl){
+  if(spanEl.querySelector('input'))return;
+  const page=ST.pages[idx]; if(!page)return;
+  const cur=page.name;
+  const inp=makeInlineInput(cur,
+    v=>{page.name=v;save();renderPages();},
+    ()=>{spanEl.textContent=cur;}
+  );
+  spanEl.textContent='';spanEl.appendChild(inp);
+  inp.focus();inp.select();
 }
 function startInlineEditFolder(fid, spanEl){
   if(spanEl.querySelector('input'))return;
   const folder=ST.folders.find(f=>f.id==fid); if(!folder)return;
   const cur=folder.name;
-  const inp=document.createElement('input');
-  inp.className='inline-edit';inp.value=cur;
+  const inp=makeInlineInput(cur,
+    v=>{folder.name=v;save();renderPages();},
+    ()=>{spanEl.textContent=cur;}
+  );
   spanEl.textContent='';spanEl.appendChild(inp);
   inp.focus();inp.select();
-  function commit(){
-    const v=inp.value.trim()||cur;
-    folder.name=v;
-    save();renderPages();
-  }
-  inp.addEventListener('keydown',e=>{
-    if(e.key==='Enter'){e.preventDefault();commit();}
-    if(e.key==='Escape'){spanEl.textContent=eh(cur);}
-    e.stopPropagation();
-  });
-  inp.addEventListener('blur',commit);
-  inp.addEventListener('pointerdown',e=>e.stopPropagation());
-  inp.addEventListener('click',e=>e.stopPropagation());
 }
 function toggleF(fid){const f=ST.folders.find(x=>x.id==fid);if(!f)return;f.open=!f.open;save();renderPages();}
 function delFolder(fid){
