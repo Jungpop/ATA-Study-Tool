@@ -1565,11 +1565,6 @@ function renderHS(page){
         px:e.clientX, py:e.clientY,
         pid:e.pointerId,
         left:parseFloat(el.style.left), top:parseFloat(el.style.top),
-        // transform:translate(-50%,-50%) 보정 포함한 클릭 오프셋
-        // el의 실제 렌더 위치 = style.left - sz/2, style.top - sz/2
-        // 포인터가 배지 내 어느 위치를 눌렀는지 = pt - (style.left - sz/2)
-        ox:cvPt(e.clientX,e.clientY).x - (parseFloat(el.style.left) - curSz/2),
-        oy:cvPt(e.clientX,e.clientY).y - (parseFloat(el.style.top)  - curSz/2),
         sz:curSz, time:Date.now(),
         isMouse: e.pointerType==='mouse'
       };
@@ -1639,10 +1634,9 @@ function renderHS(page){
       } else if(state==='move'){
         e.preventDefault();
         const pt=cvPt(e.clientX,e.clientY);
-        // style.left/top은 배지 중심 좌표 (transform:-50%,-50% 기준)
-        // 포인터 위치에서 배지 내 클릭 오프셋을 빼면 배지 좌상단 → +sz/2 하면 중심
-        let nx=(pt.x - pdStart.ox) + curSz/2;
-        let ny=(pt.y - pdStart.oy) + curSz/2;
+        // transform:translate(-50%,-50%) 덕분에 포인터 위치 = style.left/top 그대로 사용
+        let nx=pt.x;
+        let ny=pt.y;
         nx=Math.max(-curSz/2, Math.min(cvW()-curSz/2, nx));
         ny=Math.max(-curSz/2, Math.min(cvH()-curSz/2, ny));
         el.style.left=nx+'px'; el.style.top=ny+'px';
@@ -1675,8 +1669,9 @@ function renderHS(page){
             });
         } else {
           const W=cvW(),H=cvH();
-          const cx=parseFloat(el.style.left)+curSz/2;
-          const cy=parseFloat(el.style.top)+curSz/2;
+          // style.left/top = 배지 중심 좌표 (transform:-50%,-50% 기준)
+          const cx=parseFloat(el.style.left);
+          const cy=parseFloat(el.style.top);
           const p=ST.pages[ST.cur];
           // 드롭 위치에서 히트 이미지 재판별 → 이미지 위면 그 이미지에 재종속
           const hitImg=p&&[...p.images].reverse().find(im2=>{
