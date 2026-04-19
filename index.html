@@ -106,6 +106,7 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 /* 폴더/페이지 D&D */
 .folder{touch-action:none;user-select:none;-webkit-user-select:none;}
 .pitem{touch-action:none;user-select:none;-webkit-user-select:none;}
+.fhdr{touch-action:none;user-select:none;-webkit-user-select:none;}
 .folder.dragging,.pitem.dragging{opacity:.4;background:var(--s3);}
 .folder.drag-over-top,.pitem.drag-over-top{border-top:2px solid var(--ac);}
 .folder.drag-over-bot,.pitem.drag-over-bot{border-bottom:2px solid var(--ac);}
@@ -560,10 +561,10 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
     <div id="canvasArea">
       <!-- 고정 캔버스 컨테이너 -->
       <div id="cv" class="m-edit">
-        <div id="emptyState">
+        <div id="emptyState" onclick="startAdd('page')" style="cursor:pointer;">
           <div class="ei">✈️</div>
           <div class="et">시작하려면 페이지를 만드세요</div>
-          <div class="es">좌측 패널 또는 하단 📁 버튼으로 페이지를 추가하세요</div>
+          <div class="ecta">새 페이지 만들기</div>
         </div>
         <div id="blankCanvas" style="display:none;position:absolute;inset:0;z-index:1;
           display:none;align-items:center;justify-content:center;">
@@ -1079,14 +1080,10 @@ function delFolder(fid){
   detach(fid);save();renderPages();toast('폴더 삭제됨');
 }
 
-// ── 페이지/폴더 D&D (롱프레스 1초) ──────────
-// 핵심 설계:
-//  - .fhdr 에만 폴더 롱프레스 등록 (폴더 전체 div 아님 → 버블링 차단)
-//  - .pitem pointerdown 은 stopPropagation → 상위 .folder 로 전파 안 됨
-//  - pointermove/pointerup 은 container 단 하나에만 등록 (중복 방지)
-//  - 드래그 타겟 판정: .fhdr (폴더헤더) 와 .pitem 만 대상
+// ── 페이지/폴더 D&D (롱프레스 900ms) ──────────
 function initPageDnD(container){
-  let dragEl=null,dragType=null,dragData=null,isDragging=false,longPressTimer=null,capturedPid=null;
+  let dragEl=null,dragType=null,dragData=null,isDragging=false,longPressTimer=null;
+  let dragSourceEl=null; // 실제 pointerdown 발생 요소 (setPointerCapture용)
 
   function cancelLP(){clearTimeout(longPressTimer);longPressTimer=null;}
 
@@ -1099,39 +1096,37 @@ function initPageDnD(container){
   function resetState(){
     cancelLP();
     clearHighlights();
-    if(dragEl){dragEl.classList.remove('dragging','drag-ready');}
-    dragEl=null;dragType=null;dragData=null;isDragging=false;capturedPid=null;
+    if(dragEl) dragEl.classList.remove('dragging','drag-ready');
+    dragEl=null;dragType=null;dragData=null;isDragging=false;dragSourceEl=null;
   }
 
-  function startLP(e, el, type, data){
+  function startLP(e, visualEl, sourceEl, type, data){
     cancelLP();
-    dragEl=el; dragType=type; dragData=data; isDragging=false;
-    el.classList.add('drag-ready');
-    capturedPid=e.pointerId;
+    dragEl=visualEl; dragSourceEl=sourceEl; dragType=type; dragData=data; isDragging=false;
+    visualEl.classList.add('drag-ready');
     longPressTimer=setTimeout(()=>{
       isDragging=true;
-      el.classList.remove('drag-ready');
-      el.classList.add('dragging');
-      try{el.setPointerCapture(e.pointerId);}catch(err){}
+      visualEl.classList.remove('drag-ready');
+      visualEl.classList.add('dragging');
+      // setPointerCapture는 실제 이벤트 발생 요소에 걸어야 함
+      try{sourceEl.setPointerCapture(e.pointerId);}catch(err){}
       toast('드래그 모드 활성');
     },900);
   }
 
-  // ── 타겟 판정: 커서 Y 위치에서 가장 가까운 .fhdr 또는 .pitem ──
+  // 드롭 타겟 판정
   function findTarget(clientY){
-    // 드래그 중인 원소(또는 그 조상 폴더) 를 제외
-    const dragFolderEl = dragType==='folder' ? dragEl : null;
-    const items = Array.from(container.querySelectorAll('.fhdr,.pitem')).filter(el=>{
+    const items=Array.from(container.querySelectorAll('.fhdr,.pitem')).filter(el=>{
       if(dragType==='folder'){
-        // 드래그 중인 폴더의 .fhdr 및 그 하위 항목 제외
-        if(dragFolderEl && dragFolderEl.contains(el)) return false;
+        // 드래그 중인 폴더 div 안의 요소 전부 제외
+        const folderDiv=container.querySelector(`.folder[data-fid="${dragData}"]`);
+        if(folderDiv&&folderDiv.contains(el)) return false;
       }else{
-        // 드래그 중인 .pitem 제외
         if(el===dragEl) return false;
       }
       return true;
     });
-    let best=null, bestDist=Infinity;
+    let best=null,bestDist=Infinity;
     items.forEach(el=>{
       const box=el.getBoundingClientRect();
       const mid=box.top+box.height/2;
@@ -1141,7 +1136,6 @@ function initPageDnD(container){
     return best;
   }
 
-  // ── container 레벨 pointermove / pointerup ──
   container.addEventListener('pointermove',e=>{
     if(!isDragging)return;
     e.preventDefault();
@@ -1149,8 +1143,7 @@ function initPageDnD(container){
     const t=findTarget(e.clientY);
     if(!t)return;
     const isFhdr=t.el.classList.contains('fhdr');
-    // 폴더/페이지 모두 fhdr 중앙 근처 → into (폴더 안으로 편입)
-    if(isFhdr && t.dist<18){
+    if(isFhdr&&t.dist<18){
       t.el.classList.add('drag-over-into');
     }else{
       t.el.classList.add(t.above?'drag-over-top':'drag-over-bot');
@@ -1158,57 +1151,53 @@ function initPageDnD(container){
   },{passive:false});
 
   container.addEventListener('pointerup',e=>{
-    if(!dragEl)return;
+    if(!dragEl){resetState();return;}
     cancelLP();
     const wasDragging=isDragging;
-    const savedType=dragType, savedData=dragData, savedEl=dragEl;
+    const savedType=dragType,savedData=dragData,savedEl=dragEl;
 
-    const overInto  = container.querySelector('.fhdr.drag-over-into');
-    const overTop   = container.querySelector('.fhdr.drag-over-top,.pitem.drag-over-top');
-    const overBot   = container.querySelector('.fhdr.drag-over-bot,.pitem.drag-over-bot');
+    const overInto = container.querySelector('.fhdr.drag-over-into');
+    const overTop  = container.querySelector('.fhdr.drag-over-top,.pitem.drag-over-top');
+    const overBot  = container.querySelector('.fhdr.drag-over-bot,.pitem.drag-over-bot');
     resetState();
 
     if(!wasDragging){
-      // 단순 클릭 — 페이지 로드 (이름 편집은 pname/fname onclick 담당)
       if(savedType==='page'){
-        // pname 클릭이 아닌 메모(아이콘, 빈 공간)에서 온 경우만 로드
-        if(!e.target.closest('.pname'))loadPageC(parseInt(savedData));
+        if(!e.target.closest('.pname')) loadPageC(parseInt(savedData));
       }
-      // 폴더는 farr(▶) onclick 또는 fname onclick이 처리
       return;
     }
 
-    const overEl = overInto || overTop || overBot;
-    if(!overEl) return;
-    const above = !!overTop;
+    const overEl=overInto||overTop||overBot;
+    if(!overEl)return;
+    const above=!!overTop;
 
     if(savedType==='page'){
-      const page=ST.pages[parseInt(savedData)]; if(!page)return;
-      const pageIdx=ST.pages.indexOf(page);
+      const pageIdx=parseInt(savedData);
+      const page=ST.pages[pageIdx]; if(!page)return;
 
       if(overInto){
-        // 폴더 안으로
-        const fid=parseInt(overInto.closest('.folder').dataset.fid);
-        page.folderId=fid; save(); renderPages(); return;
+        // 폴더 안으로 편입
+        const folderDiv=overInto.closest('.folder');
+        if(!folderDiv)return;
+        page.folderId=parseInt(folderDiv.dataset.fid);
+        save();renderPages();return;
       }
       if(overEl.classList.contains('fhdr')){
-        // 폴더 헤더 앞/뒤 → 미분류로
+        // 폴더 헤더 주변 → 미분류
         page.folderId=null;
-      }else{
-        // 다른 pitem 앞/뒤
-        const toIdx=parseInt(overEl.dataset.pidx);
-        if(isNaN(toIdx)||toIdx===pageIdx)return;
-        const[moved]=ST.pages.splice(pageIdx,1);
-        const newIdx=ST.pages.findIndex((_,i)=>i===(above?toIdx:toIdx)); // recalc after splice
-        // splice 후 인덱스 재계산
-        const baseIdx=ST.pages.findIndex(p=>p===ST.pages[above
-          ?(pageIdx<toIdx?toIdx-1:toIdx)
-          :(pageIdx<toIdx?toIdx:toIdx+1)] );
-        const insertAt=pageIdx<toIdx?(above?toIdx-1:toIdx):(above?toIdx:toIdx+1);
-        ST.pages.splice(Math.max(0,Math.min(ST.pages.length,insertAt)),0,moved);
-        ST.cur=ST.pages.indexOf(moved);
+        save();renderPages();return;
       }
-      save(); renderPages();
+      // 다른 pitem 앞/뒤
+      const toIdx=parseInt(overEl.dataset.pidx);
+      if(isNaN(toIdx)||toIdx===pageIdx)return;
+      const[moved]=ST.pages.splice(pageIdx,1);
+      // splice 후 toIdx 재계산
+      const adjustedTo=pageIdx<toIdx?toIdx-1:toIdx;
+      const insertAt=above?adjustedTo:adjustedTo+1;
+      ST.pages.splice(Math.max(0,Math.min(ST.pages.length,insertAt)),0,moved);
+      ST.cur=ST.pages.indexOf(moved);
+      save();renderPages();
 
     }else if(savedType==='folder'){
       const fid=parseInt(savedData);
@@ -1219,41 +1208,38 @@ function initPageDnD(container){
       }
 
       if(overEl.classList.contains('fhdr')){
-        const toFolderEl=overEl.closest('.folder');
-        const toFid=parseInt(toFolderEl.dataset.fid);
+        const toFolderDiv=overEl.closest('.folder');
+        if(!toFolderDiv)return;
+        const toFid=parseInt(toFolderDiv.dataset.fid);
         if(toFid===fid||isDescendant(fid,toFid))return;
 
         if(overInto){
-          // ★ 하위폴더로 편입: folder.parentId만 변경
-          // 폴더 내부 하위폴더/페이지는 parentId/folderId 체인으로
-          // 자동으로 따라오므로 별도 조작 불필요
+          // 하위 폴더로 편입
           folder.parentId=toFid;
         }else{
-          // 같은 레벨 순서 변경 — parentId는 대상 폴더와 동일하게
+          // 같은 레벨 순서 변경
           const toFolder=ST.folders.find(f=>f.id==toFid);
           folder.parentId=toFolder?toFolder.parentId:null;
         }
       }else{
-        // pitem 옆 → 루트레벨로
+        // pitem 옆 → 루트 레벨로
         folder.parentId=null;
       }
-      save(); renderPages();
+      save();renderPages();
     }
   });
 
   container.addEventListener('pointercancel',()=>resetState());
 
   // ── .fhdr 에 폴더 롱프레스 등록 ──
-  // (폴더 헤더에서만 시작, 버튼 클릭은 제외)
   container.querySelectorAll('.fhdr').forEach(hdr=>{
     const folderEl=hdr.closest('.folder');
+    if(!folderEl)return;
     const fid=parseInt(folderEl.dataset.fid);
     hdr.addEventListener('pointerdown',e=>{
-      if(e.target.closest('.fdel'))return;   // 삭제버튼 제외
-      if(e.target.closest('.fname'))return;  // 이름 편집 클릭 제외
-      if(e.target.closest('.farr'))return;   // 토글 버튼 제외
+      if(e.target.closest('.fdel,.fname,.farr'))return;
       e.stopPropagation();
-      startLP(e,folderEl,'folder',fid);
+      startLP(e, folderEl, hdr, 'folder', fid); // sourceEl=hdr (이벤트 발생 요소)
     });
     hdr.addEventListener('contextmenu',e=>e.preventDefault());
   });
@@ -1262,10 +1248,9 @@ function initPageDnD(container){
   container.querySelectorAll('.pitem').forEach(el=>{
     const pidx=parseInt(el.dataset.pidx);
     el.addEventListener('pointerdown',e=>{
-      if(e.target.closest('.pedit,.pdel'))return;
-      // 버블링 차단 → 상위 .folder 에 전파 안 됨
+      if(e.target.closest('.pedit,.pdel,.pname'))return;
       e.stopPropagation();
-      startLP(e,el,'page',pidx);
+      startLP(e, el, el, 'page', pidx); // sourceEl=el
     });
     el.addEventListener('contextmenu',e=>e.preventDefault());
   });
@@ -2596,18 +2581,35 @@ function startAdd(type,parentFid){
 }
 function closeAdd(){$('addDlg').style.display='none';}
 function confirmAdd(){
-  const name=$('dlgInput').value.trim();
+  const input=$('dlgInput').value.trim();
   if(addMode==='folder'){
-    if(!name){toast('이름을 입력하세요');return;}
+    // 이름 없으면 "새 폴더 N" 자동 생성
+    const name=input||autoFolderName();
     const pid=$('dlgParent').value||null;
     ST.folders.push({id:Date.now(),name,open:true,parentId:pid?parseInt(pid):null});
     save();closeAdd();renderPages();toast('폴더 추가됨');
   }else{
-    ST.pages.push({id:Date.now(),folderId:$('dlgFolder').value||null,name:name||'새 페이지',
+    // 이름 없으면 "새 페이지 N" 자동 생성
+    const name=input||autoPageName();
+    ST.pages.push({id:Date.now(),folderId:$('dlgFolder').value||null,name,
       images:[],hotspots:[],drawData:null,tboxes:[]});
     save();closeAdd();renderPages();loadPage(ST.pages.length-1);
     updateToolbarDisabled();toast('페이지 추가됨');
   }
+}
+
+// 중복 없는 자동 이름 생성
+function autoFolderName(){
+  let n=1;
+  const names=new Set(ST.folders.map(f=>f.name));
+  while(names.has(`새 폴더 ${n}`)) n++;
+  return `새 폴더 ${n}`;
+}
+function autoPageName(){
+  let n=1;
+  const names=new Set(ST.pages.map(p=>p.name));
+  while(names.has(`새 페이지 ${n}`)) n++;
+  return `새 페이지 ${n}`;
 }
 function openPageEdit(i){
   closeAllPanels();pageEditIdx=i;const p=ST.pages[i];
