@@ -186,14 +186,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   background:var(--gr);border:2px solid var(--bg);cursor:se-resize;
   display:none;z-index:5;touch-action:none;}
 
-/* move 모드: 이미지 조작 활성 */
+/* move 모드: 이미지 이동 + 리사이즈 통합 */
 #cv.m-move .ci{cursor:grab;pointer-events:all;}
 #cv.m-move .ci:active{cursor:grabbing;}
 #cv.m-move .ci-del{display:flex;}
-/* imgresize 모드: 핸들 표시 */
-#cv.m-imgresize .ci{pointer-events:all;}
-#cv.m-imgresize .ci-rh{display:block;}
-#cv.m-imgresize .ci-del{display:flex;}
+#cv.m-move .ci-rh{display:block;}
 /* 나머지 모드: 이미지는 배경 — 클릭 통과 */
 #cv.m-edit .ci,
 #cv.m-view .ci,
@@ -213,8 +210,7 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #cv.m-view #dl,
 #cv.m-edit #dl,
 #cv.m-text #dl,
-#cv.m-move #dl,
-#cv.m-imgresize #dl{pointer-events:none;}
+#cv.m-move #dl{pointer-events:none;}
 
 /* 핫스팟 z:30 */
 .hs{position:absolute;z-index:30;border:2px solid rgba(14,165,233,.75);
@@ -223,8 +219,7 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 /* edit/view 모드에서만 핫스팟 클릭 가능 */
 #cv.m-draw .hs,
 #cv.m-text .hs,
-#cv.m-move .hs,
-#cv.m-imgresize .hs{pointer-events:none;}
+#cv.m-move .hs{pointer-events:none;}
 .hs-lbl{position:absolute;top:-22px;left:-1px;background:var(--ac);color:#000;font-size:9px;
   font-family:var(--mono);font-weight:700;padding:2px 6px;border-radius:3px 3px 3px 0;
   white-space:nowrap;pointer-events:none;}
@@ -265,9 +260,8 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 /* edit 모드: 드래그만 가능 */
 #cv.m-edit .tb{pointer-events:all;}
 #cv.m-edit .tb textarea{pointer-events:none;}
-/* move/imgresize 모드: 텍스트박스 비활성 */
+/* move 모드: 텍스트박스 비활성 */
 #cv.m-move .tb{pointer-events:none;}
-#cv.m-imgresize .tb{pointer-events:none;}
 
 /* ── TOOLBAR ── */
 #tb{height:var(--tb);flex-shrink:0;background:var(--s1);border-top:1px solid var(--bd);
@@ -485,8 +479,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
       <button class="tbtn"    id="bDraw"       onclick="setMode('draw')"      title="D">🖊 필기</button>
       <button class="tbtn"    id="bText"       onclick="setMode('text')"      title="T">🔤 텍스트</button>
       <div class="tsep"></div>
-      <button class="tbtn"    id="bMove"       onclick="setMode('move')"      title="M">✋ 이동</button>
-      <button class="tbtn"    id="bImgresize"  onclick="setMode('imgresize')" title="Z">⤡ 크기</button>
+      <button class="tbtn"    id="bMove"       onclick="setMode('move')"      title="M">✋ 이동/크기</button>
       <div class="tsep"></div>
       <button class="tbtn" onclick="triggerImg()">🖼 이미지 추가</button>
       <button class="tbtn del" onclick="clearHotspots()">🗑 영역삭제</button>
@@ -527,8 +520,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
   <button class="bnt"    id="bnView"      onclick="setMode('view')">      <span class="bi">👁</span><span>학습</span></button>
   <button class="bnt"    id="bnDraw"      onclick="setMode('draw')">      <span class="bi">🖊</span><span>필기</span></button>
   <button class="bnt"    id="bnText"      onclick="setMode('text')">      <span class="bi">🔤</span><span>텍스트</span></button>
-  <button class="bnt"    id="bnMove"      onclick="setMode('move')">      <span class="bi">✋</span><span>이동</span></button>
-  <button class="bnt"    id="bnImgresize" onclick="setMode('imgresize')"> <span class="bi">⤡</span><span>크기</span></button>
+  <button class="bnt"    id="bnMove"      onclick="setMode('move')">      <span class="bi">✋</span><span>이동/크기</span></button>
   <button class="bnt"    onclick="togglePanel('L')"><span class="bi">📁</span><span>페이지</span></button>
   <button class="bnt"    onclick="togglePanel('R')"><span class="bi">📋</span><span>목록</span></button>
 </nav>
@@ -1142,7 +1134,7 @@ function renderImgs(page){
     const rh=document.createElement('div');rh.className='ci-rh';
     let rzStart=null;
     rh.addEventListener('pointerdown',e=>{
-      if(mode!=='imgresize')return;
+      if(mode!=='move')return;
       e.stopPropagation();e.preventDefault();
       rh.setPointerCapture(e.pointerId);
       rzStart={ox:e.clientX,oy:e.clientY,ow:wrap.offsetWidth,oh:wrap.offsetHeight};
@@ -1489,19 +1481,18 @@ function clearDraw(){
 
 // ── 모드 ─────────────────────────────────────
 const TIPS={
-  edit:     '이미지 위 드래그 → 핫스팟 생성 | E V D T M Z',
+  edit:     '이미지 위 드래그 → 핫스팟 생성 | E V D T M',
   view:     '파란 영역 탭 → 학습 내용 팝업',
   draw:     'Apple Pencil / 마우스로 필기 | Ctrl+Z 취소',
   text:     '빈 곳 탭 → 텍스트 박스 추가 | 테두리 드래그 이동',
-  move:     '이미지 드래그 → 위치 이동 | × 버튼으로 삭제',
-  imgresize:'이미지 우하단 ■ 드래그 → 크기 조절'
+  move:     '이미지 드래그 → 이동 | 우하단 ■ 드래그 → 크기 조절 | × 버튼으로 삭제'
 };
 function setMode(m){
   mode=m;
-  ['edit','view','draw','text','move','imgresize'].forEach(n=>{
+  ['edit','view','draw','text','move'].forEach(n=>{
     const b=$('b'+n.charAt(0).toUpperCase()+n.slice(1));if(b)b.className='tbtn'+(n===m?' on':'');
   });
-  ['Edit','View','Draw','Text','Move','Imgresize'].forEach(n=>{
+  ['Edit','View','Draw','Text','Move'].forEach(n=>{
     const b=$('bn'+n);if(b)b.classList.toggle('on',n.toLowerCase()===m);
   });
   CV().className='m-'+m;
@@ -1803,7 +1794,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){closeEdit();closeView();closeAdd();closeAllPanels();closePageEdit();}
   if((e.ctrlKey||e.metaKey)&&e.key==='z'){undoDraw();return;}
   if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
-  const map={e:'edit',v:'view',d:'draw',t:'text',m:'move',z:'imgresize'};
+  const map={e:'edit',v:'view',d:'draw',t:'text',m:'move'};
   if(map[e.key])setMode(map[e.key]);
 });
 $('dlgInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmAdd();});
