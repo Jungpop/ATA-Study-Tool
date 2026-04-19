@@ -1372,7 +1372,9 @@ function renderImgs(page){
           wrap.remove();save();
           if(!p.images.length)showEmpty();
           toast('이미지 삭제됨');
-        },'삭제');
+        },'삭제',
+        ()=>{// 취소 시 원래 자리 복귀
+          const _p=ST.pages[ST.cur];if(_p)renderImgs(_p);});
       } else {
         im.x=parseFloat(wrap.style.left)/cvW()*100;
         im.y=parseFloat(wrap.style.top)/cvH()*100;
@@ -1518,13 +1520,11 @@ function renderHS(page){
       } else if(state==='move'){
         e.preventDefault();
         const pt=cvPt(e.clientX,e.clientY);
-        const b=imgBounds();
         let nx=pdStart.left+(pt.x-(cvPt(pdStart.px,pdStart.py).x));
         let ny=pdStart.top +(pt.y-(cvPt(pdStart.px,pdStart.py).y));
-        if(b){
-          nx=Math.max(b.x-curSz/2,Math.min(b.x+b.w-curSz/2,nx));
-          ny=Math.max(b.y-curSz/2,Math.min(b.y+b.h-curSz/2,ny));
-        }
+        // D&D 이동 중: 이미지 경계 해제, 캔버스 경계만 유지
+        nx=Math.max(-curSz/2, Math.min(cvW()-curSz/2, nx));
+        ny=Math.max(-curSz/2, Math.min(cvH()-curSz/2, ny));
         el.style.left=nx+'px'; el.style.top=ny+'px';
         const over=trashIsOver(e.clientX,e.clientY);
         el.classList.toggle('dragging-to-trash',over);
@@ -1546,23 +1546,34 @@ function renderHS(page){
         e.stopPropagation();e.preventDefault();
         if(overTrash){
           showConfirmDlg(`메모를 삭제할까요?`,`"${hs.title||`메모 ${i+1}`}"이(가) 삭제됩니다.`,
-            ()=>delHS(hs.id),'삭제');
+            ()=>delHS(hs.id),'삭제',
+            ()=>{const p=ST.pages[ST.cur];if(p)renderHS(p);}); // 취소 시 원래 자리 복귀
         } else {
           const W=cvW(),H=cvH();
           const cx=parseFloat(el.style.left)+curSz/2;
           const cy=parseFloat(el.style.top)+curSz/2;
           const p=ST.pages[ST.cur];
-          const im=p&&hs.imgId!=null&&p.images.find(x=>x.id===hs.imgId);
-          if(im){
-            const ix=im.x*W/100,iy=im.y*H/100,iw=im.w*W/100,ih=im.h*H/100;
-            hs.rx=Math.max(0,Math.min(100,(cx-ix)/iw*100));
-            hs.ry=Math.max(0,Math.min(100,(cy-iy)/ih*100));
+          // 드롭 위치에서 히트 이미지 재판별 → 이미지 위면 그 이미지에 재종속
+          const hitImg=p&&[...p.images].reverse().find(im2=>{
+            const ix=im2.x*W/100,iy=im2.y*H/100,iw=im2.w*W/100,ih=im2.h*H/100;
+            return cx>=ix&&cx<=ix+iw&&cy>=iy&&cy<=iy+ih;
+          });
+          if(hitImg){
+            hs.imgId=hitImg.id;
+            const ix=hitImg.x*W/100,iy=hitImg.y*H/100,iw=hitImg.w*W/100,ih=hitImg.h*H/100;
+            hs.rx=(cx-ix)/iw*100; hs.ry=(cy-iy)/ih*100;
+            hs.x=cx/W*100;hs.y=cy/H*100;
+            save();renderHS(p);
+          } else {
+            // 이미지 밖에 드롭 → 원래 자리로 복귀
+            toast('이미지 위에 놓아주세요');
+            renderHS(p);
           }
-          hs.x=cx/W*100;hs.y=cy/H*100;save();
         }
       } else if(endState==='delete'){
         showConfirmDlg(`메모를 삭제할까요?`,`"${hs.title||`메모 ${i+1}`}"이(가) 삭제됩니다.`,
-          ()=>delHS(hs.id),'삭제');
+          ()=>delHS(hs.id),'삭제',
+          ()=>{const p=ST.pages[ST.cur];if(p)renderHS(p);}); // 취소 시 원래 자리 복귀
       } else {
         e.stopPropagation();
         if(mode==='view')openView(hs.id);
@@ -1755,7 +1766,9 @@ function makeTBEl(tb,W,H){
         const p=ST.pages[ST.cur];if(!p)return;
         p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
         wrap.remove();save();toast('텍스트 박스 삭제됨');
-      },'삭제');
+      },'삭제',
+      ()=>{// 취소 시 원래 자리 복귀
+        const p=ST.pages[ST.cur];if(p)renderTB(p);});
     } else if(wasDragging){
       const p=ST.pages[ST.cur];
       const t=p?.tboxes.find(x=>x.id===tb.id);
