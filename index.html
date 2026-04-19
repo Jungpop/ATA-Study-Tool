@@ -1333,6 +1333,7 @@ function renderImgs(page){
     rh.addEventListener('pointercancel',()=>{rzStart=null;});
     // 이미지 이동 — 롱프레스 0.5초 후 드래그 + 휴지통 드롭 삭제
     let mvStart=null,mvLpTimer=null,mvDragging=false;
+    let imOrigX=im.x, imOrigY=im.y; // 드래그 시작 전 원래 좌표
     function mvReset(){
       clearTimeout(mvLpTimer);mvLpTimer=null;mvDragging=false;mvStart=null;
       wrap.classList.remove('dragging-to-trash');
@@ -1346,8 +1347,8 @@ function renderImgs(page){
       if(e.target===del||e.target===rh)return;
       e.stopPropagation();e.preventDefault();
       const p2=cvPt(e.clientX,e.clientY);
-      mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top),pid:e.pointerId,
-        origX:im.x,origY:im.y}; // 원래 좌표 저장
+      imOrigX=im.x; imOrigY=im.y; // 매번 최신 원래 좌표 저장
+      mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top),pid:e.pointerId};
       // 롱프레스 중 텍스트 선택 방지
       document.body.style.userSelect='none';
       document.body.style.webkitUserSelect='none';
@@ -1368,9 +1369,10 @@ function renderImgs(page){
       const over=trashIsOver(e.clientX,e.clientY);
       wrap.classList.toggle('dragging-to-trash',over);
       trashUpdateOver(e.clientX,e.clientY);
+      // 이미지 이동 중 im 좌표 실시간 업데이트 → 메모 배지 추적
+      im.x=nx/cvW()*100; im.y=ny/cvH()*100;
       const _tp=ST.pages[ST.cur];
-      if(_tp){const _im=_tp.images.find(x=>x.id===im.id);
-        if(_im){_im.x=nx/cvW()*100;_im.y=ny/cvH()*100;renderHS(_tp);}}
+      if(_tp) renderHS(_tp);
     });
     wrap.addEventListener('pointerup',e=>{
       if(!mvDragging){clearTimeout(mvLpTimer);mvStart=null;return;}
@@ -1385,16 +1387,20 @@ function renderImgs(page){
           toast('이미지 삭제됨');
         },'삭제',
         ()=>{// 취소 시 원래 좌표로 복귀
-          im.x=mvStart?.origX??im.x;im.y=mvStart?.origY??im.y;
+          im.x=imOrigX; im.y=imOrigY;
           const _p=ST.pages[ST.cur];if(_p)renderImgs(_p);});
       } else {
-        im.x=parseFloat(wrap.style.left)/cvW()*100;
-        im.y=parseFloat(wrap.style.top)/cvH()*100;
+        // pointermove에서 이미 im.x/y 업데이트됨 → save만
         save();
         const _p=ST.pages[ST.cur];if(_p)renderHS(_p);
       }
     });
-    wrap.addEventListener('pointercancel',()=>mvReset());
+    wrap.addEventListener('pointercancel',()=>{
+      // 취소 시 원래 좌표 복원
+      im.x=imOrigX; im.y=imOrigY;
+      mvReset();
+      const _p=ST.pages[ST.cur];if(_p)renderHS(_p);
+    });
     wrap.appendChild(img);wrap.appendChild(del);wrap.appendChild(rh);
     CV().appendChild(wrap);
   });
@@ -1441,10 +1447,11 @@ function renderHS(page){
     el.appendChild(badge);el.appendChild(tip);el.appendChild(del);
 
     // ── 통합 포인터 핸들러 ──
-    // 상태: idle → resize(즉시 드래그) / move(1초 롱프레스) / delete(3초 롱프레스)
     let state='idle'; // 'idle'|'resize'|'move'|'delete'
     let pdStart=null, lpMove=null, lpDelete=null;
     let curSz=hs.size||32;
+    // 드래그 시작 전 원래 좌표 저장
+    let hsOrigX=hs.x, hsOrigY=hs.y, hsOrigRx=hs.rx, hsOrigRy=hs.ry, hsOrigImgId=hs.imgId;
 
     function imgBounds(){
       const W=cvW(),H=cvH();
@@ -1492,6 +1499,8 @@ function renderHS(page){
           if(state!=='idle')return;
           state='move';
           blockCvClick=true;
+          // 이동 시작 직전 원래 좌표 저장
+          hsOrigX=hs.x; hsOrigY=hs.y; hsOrigRx=hs.rx; hsOrigRy=hs.ry; hsOrigImgId=hs.imgId;
           try{el.setPointerCapture(pdStart.pid);}catch(err){}
           el.classList.add('hs-ready');
           trashShow();
@@ -1559,7 +1568,12 @@ function renderHS(page){
         if(overTrash){
           showConfirmDlg(`메모를 삭제할까요?`,`"${hs.title||`메모 ${i+1}`}"이(가) 삭제됩니다.`,
             ()=>delHS(hs.id),'삭제',
-            ()=>{const p=ST.pages[ST.cur];if(p)renderHS(p);}); // 취소 시 원래 자리 복귀
+            ()=>{
+              // 취소: 원래 좌표 복원 + 기존 el 제거 후 재렌더
+              hs.x=hsOrigX;hs.y=hsOrigY;hs.rx=hsOrigRx;hs.ry=hsOrigRy;hs.imgId=hsOrigImgId;
+              el.remove();
+              const p=ST.pages[ST.cur];if(p)renderHS(p);
+            });
         } else {
           const W=cvW(),H=cvH();
           const cx=parseFloat(el.style.left)+curSz/2;
@@ -1585,7 +1599,8 @@ function renderHS(page){
       } else if(endState==='delete'){
         showConfirmDlg(`메모를 삭제할까요?`,`"${hs.title||`메모 ${i+1}`}"이(가) 삭제됩니다.`,
           ()=>delHS(hs.id),'삭제',
-          ()=>{const p=ST.pages[ST.cur];if(p)renderHS(p);}); // 취소 시 원래 자리 복귀
+          ()=>{// 취소 시 원래 좌표 복원 (이동 없었으므로 현재 좌표 그대로 유지)
+            const p=ST.pages[ST.cur];if(p)renderHS(p);});
       } else {
         e.stopPropagation();
         if(mode==='view')openView(hs.id);
@@ -1593,7 +1608,13 @@ function renderHS(page){
       }
     });
 
-    el.addEventListener('pointercancel',()=>{resetState();trashHide();el.classList.remove('dragging-to-trash');blockCvClick=false;});
+    el.addEventListener('pointercancel',()=>{
+      resetState();trashHide();blockCvClick=false;
+      // 취소 시 원래 좌표 복원
+      hs.x=hsOrigX;hs.y=hsOrigY;hs.rx=hsOrigRx;hs.ry=hsOrigRy;hs.imgId=hsOrigImgId;
+      el.remove();
+      const p=ST.pages[ST.cur];if(p)renderHS(p);
+    });
     CV().appendChild(el);
   });
 }
@@ -1788,9 +1809,12 @@ function makeTBEl(tb,W,H){
         p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
         wrap.remove();save();toast('텍스트 박스 삭제됨');
       },'삭제',()=>{
-        // 원래 위치로 복귀
-        tb.x=origTbX;tb.y=origTbY;
-        const p=ST.pages[ST.cur];if(p)renderTB(p);
+        // 원래 위치로 복귀: ST.pages 배열에서 직접 찾아 복원
+        const p=ST.pages[ST.cur];if(!p)return;
+        const t=p.tboxes.find(x=>x.id===tb.id);
+        if(t){t.x=origTbX;t.y=origTbY;}
+        wrap.remove();
+        renderTB(p);
       });
     } else {
       // 이동 완료 → 위치 저장
@@ -1805,8 +1829,11 @@ function makeTBEl(tb,W,H){
     document.body.style.userSelect='';
     document.body.style.webkitUserSelect='';
     // 취소 시 원래 자리 복귀
-    tb.x=origTbX;tb.y=origTbY;
-    const p=ST.pages[ST.cur];if(p)renderTB(p);
+    const p=ST.pages[ST.cur];if(!p)return;
+    const t=p.tboxes.find(x=>x.id===tb.id);
+    if(t){t.x=origTbX;t.y=origTbY;}
+    wrap.remove();
+    renderTB(p);
   });
 
   wrap.appendChild(ta);wrap.appendChild(del);wrap.appendChild(rhR);
