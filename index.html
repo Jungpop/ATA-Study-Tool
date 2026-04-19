@@ -758,8 +758,8 @@ function closeAllPanels(){['panelL','panelR'].forEach(id=>$(id).classList.remove
 function folderHTML(fid, depth){
   const f=ST.folders.find(x=>x.id==fid);if(!f)return'';
   const open=f.open!==false;
-  const children=ST.folders.filter(x=>x.parentId==fid);
-  const fps=ST.pages.filter(p=>p.folderId==fid);
+  const children=[...ST.folders.filter(x=>x.parentId==fid)].sort(naturalSort);
+  const fps=[...ST.pages.filter(p=>p.folderId==fid)].sort(naturalSort);
   const totalCnt=fps.length+children.reduce((a,c)=>a+countInFolder(c.id),0);
   const indent=depth>0?`style="padding-left:${depth*10}px"`:'';
   let inner='';
@@ -783,13 +783,16 @@ function countInFolder(fid){
   const subs=ST.folders.filter(x=>x.parentId==fid).reduce((a,c)=>a+countInFolder(c.id),0);
   return direct+subs;
 }
+function naturalSort(a,b){
+  return a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'});
+}
 function renderPages(){
   if(!ST.folders)ST.folders=[];
   $('pageCnt').textContent=ST.pages.length;
   let h='';
-  // 루트 폴더(parentId===null) 만 렌더, 자식은 재귀
-  ST.folders.filter(f=>!f.parentId).forEach(f=>h+=folderHTML(f.id,0));
-  const uncat=ST.pages.filter(p=>!p.folderId);
+  // 루트 폴더 알파벳/숫자순 정렬 후 렌더
+  [...ST.folders].filter(f=>!f.parentId).sort(naturalSort).forEach(f=>h+=folderHTML(f.id,0));
+  const uncat=[...ST.pages.filter(p=>!p.folderId)].sort(naturalSort);
   if(uncat.length){
     if(ST.folders.length)h+=`<div class="uncat">미분류</div>`;
     uncat.forEach(p=>h+=pH(p,ST.pages.indexOf(p)));
@@ -896,8 +899,8 @@ function initPageDnD(container){
     const t=findTarget(e.clientY);
     if(!t)return;
     const isFhdr=t.el.classList.contains('fhdr');
-    // 페이지를 폴더헤더 중앙 근처로 가져가면 → into
-    if(dragType==='page' && isFhdr && t.dist<18){
+    // 폴더/페이지 모두 fhdr 중앙 근처 → into (폴더 안으로 편입)
+    if(isFhdr && t.dist<18){
       t.el.classList.add('drag-over-into');
     }else{
       t.el.classList.add(t.above?'drag-over-top':'drag-over-bot');
@@ -970,19 +973,17 @@ function initPageDnD(container){
         if(toFid===fid||isDescendant(fid,toFid))return;
 
         if(overInto){
-          // 하위폴더로 편입
+          // ★ 하위폴더로 편입: folder.parentId만 변경
+          // 폴더 내부 하위폴더/페이지는 parentId/folderId 체인으로
+          // 자동으로 따라오므로 별도 조작 불필요
           folder.parentId=toFid;
         }else{
-          // 같은 레벨 순서 변경
+          // 같은 레벨 순서 변경 — parentId는 대상 폴더와 동일하게
           const toFolder=ST.folders.find(f=>f.id==toFid);
           folder.parentId=toFolder?toFolder.parentId:null;
-          const fromGlobalIdx=ST.folders.findIndex(f=>f.id==fid);
-          const[movedF]=ST.folders.splice(fromGlobalIdx,1);
-          const toGlobalIdx=ST.folders.findIndex(f=>f.id==toFid);
-          ST.folders.splice(above?toGlobalIdx:toGlobalIdx+1,0,movedF);
         }
       }else{
-        // pitem 옆 → 루트로
+        // pitem 옆 → 루트레벨로
         folder.parentId=null;
       }
       save(); renderPages();
