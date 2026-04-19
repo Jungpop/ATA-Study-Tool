@@ -1248,12 +1248,17 @@ function makeTBEl(tb,W,H){
 
   ta.addEventListener('input',autoHeight);
 
-  // 포커스: activeTextBox 설정, 스크롤 고정
+  // 포커스: activeTextBox 설정, 스크롤/뷰포트 고정
   ta.addEventListener('focus',()=>{
     activeTextBox=tb.id;
-    // 모바일 키보드로 인한 스크롤 방어 (position:fixed 없이)
+    // 모바일 키보드로 인한 레이아웃 밀림 방어
     const sx=window.scrollX, sy=window.scrollY;
     setTimeout(()=>window.scrollTo(sx,sy),80);
+    // visualViewport 리사이즈(키보드 팝업)로 인한 스크롤 추가 방어
+    if(window.visualViewport){
+      const onVVResize=()=>window.scrollTo(sx,sy);
+      window.visualViewport.addEventListener('resize',onVVResize,{once:true});
+    }
   });
 
   // 포커스 해제: activeTextBox 초기화
@@ -1265,14 +1270,16 @@ function makeTBEl(tb,W,H){
 
   // ── 삭제 버튼 ──
   const del=document.createElement('button');del.className='tb-del';del.textContent='×';
-  del.addEventListener('pointerdown',e=>{e.stopPropagation();});
-  del.addEventListener('pointerup',e=>{
-    e.stopPropagation();
+  // pointerdown/up/click 모두 버블링 차단 → cv click 이벤트로 새 박스 생성 방지
+  del.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();});
+  del.addEventListener('pointerup',e=>{e.stopPropagation();e.preventDefault();});
+  del.addEventListener('click',e=>{
+    e.stopPropagation();e.preventDefault();
+    if(!confirm('텍스트 박스를 삭제하시겠습니까?'))return;
     const p=ST.pages[ST.cur];if(!p)return;
     p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
     wrap.remove();save();toast('텍스트 박스 삭제됨');
   });
-  del.addEventListener('click',e=>{e.stopPropagation();});
 
   // ── 너비 조절 핸들 (우측) ──
   const rhR=document.createElement('div');rhR.className='tb-rh-r';
