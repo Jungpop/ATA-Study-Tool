@@ -161,6 +161,8 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   border-radius:6px;
   box-shadow:0 0 0 1px var(--bd), var(--sh);
   overflow:hidden;
+  user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none;
 }
 
 /* 빈 상태 */
@@ -174,9 +176,12 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .ci{
   position:absolute;
   z-index:10;
-  /* pointer-events는 모드에 따라 JS로 제어 */
+  user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none; /* iOS 롱프레스 팝업 차단 */
+  touch-action:none;
 }
-.ci img{display:block;width:100%;height:100%;pointer-events:none;border-radius:2px;}
+.ci img{display:block;width:100%;height:100%;pointer-events:none;border-radius:2px;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
 /* 이미지 삭제 버튼 */
 .ci-del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;
   background:var(--rd);color:#fff;font-size:12px;font-weight:700;border:2px solid var(--bg);
@@ -1341,7 +1346,8 @@ function renderImgs(page){
       if(e.target===del||e.target===rh)return;
       e.stopPropagation();e.preventDefault();
       const p2=cvPt(e.clientX,e.clientY);
-      mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top),pid:e.pointerId};
+      mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top),pid:e.pointerId,
+        origX:im.x,origY:im.y}; // 원래 좌표 저장
       // 롱프레스 중 텍스트 선택 방지
       document.body.style.userSelect='none';
       document.body.style.webkitUserSelect='none';
@@ -1378,7 +1384,8 @@ function renderImgs(page){
           if(!p.images.length)showEmpty();
           toast('이미지 삭제됨');
         },'삭제',
-        ()=>{// 취소 시 원래 자리 복귀
+        ()=>{// 취소 시 원래 좌표로 복귀
+          im.x=mvStart?.origX??im.x;im.y=mvStart?.origY??im.y;
           const _p=ST.pages[ST.cur];if(_p)renderImgs(_p);});
       } else {
         im.x=parseFloat(wrap.style.left)/cvW()*100;
@@ -1725,17 +1732,21 @@ function makeTBEl(tb,W,H){
     wrap.style.outline='';
   }
 
+  // 원래 위치 저장용
+  let origTbX=tb.x, origTbY=tb.y;
+
   wrap.addEventListener('pointerdown',e=>{
-    // 편집 중이면 D&D 비활성
     if(!wrap.classList.contains('done'))return;
     if(e.target===del||e.target===rhR)return;
     e.stopPropagation();
-
+    // 드래그 시작 전 원래 위치 저장
+    origTbX=tb.x; origTbY=tb.y;
     wrap.classList.add('tb-ready');
-    const startX=e.clientX, startY=e.clientY;
     const p2=cvPt(e.clientX,e.clientY);
     mvStart={ox:p2.x-parseFloat(wrap.style.left), oy:p2.y-parseFloat(wrap.style.top)};
-
+    // 텍스트 선택 방지
+    document.body.style.userSelect='none';
+    document.body.style.webkitUserSelect='none';
     lpTimer=setTimeout(()=>{
       isDragging=true;
       wrap.classList.remove('tb-ready');
@@ -1761,26 +1772,42 @@ function makeTBEl(tb,W,H){
   wrap.addEventListener('pointerup',e=>{
     const wasDragging=isDragging;
     const overTrash=trashIsOver(e.clientX,e.clientY);
+    const finalLeft=parseFloat(wrap.style.left);
+    const finalTop=parseFloat(wrap.style.top);
     resetDrag();
     trashHide();
     wrap.classList.remove('dragging-to-trash');
-    if(wasDragging&&mvStart===null&&overTrash){
-      // 휴지통 드롭 → 삭제 확인
+    document.body.style.userSelect='';
+    document.body.style.webkitUserSelect='';
+    if(!wasDragging)return;
+    if(overTrash){
+      // 취소 시 원래 자리 복귀
       showConfirmDlg('텍스트를 삭제할까요?','이 텍스트 박스가 삭제됩니다.',()=>{
         if(activeTextBox===tb.id) activeTextBox=null;
         const p=ST.pages[ST.cur];if(!p)return;
         p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
         wrap.remove();save();toast('텍스트 박스 삭제됨');
-      },'삭제',
-      ()=>{// 취소 시 원래 자리 복귀
-        const p=ST.pages[ST.cur];if(p)renderTB(p);});
-    } else if(wasDragging){
+      },'삭제',()=>{
+        // 원래 위치로 복귀
+        tb.x=origTbX;tb.y=origTbY;
+        const p=ST.pages[ST.cur];if(p)renderTB(p);
+      });
+    } else {
+      // 이동 완료 → 위치 저장
       const p=ST.pages[ST.cur];
       const t=p?.tboxes.find(x=>x.id===tb.id);
-      if(t){t.x=parseFloat(wrap.style.left)/cvW()*100;t.y=parseFloat(wrap.style.top)/cvH()*100;save();}
+      if(t){t.x=finalLeft/cvW()*100;t.y=finalTop/cvH()*100;save();}
     }
   });
-  wrap.addEventListener('pointercancel',()=>{resetDrag();trashHide();wrap.classList.remove('dragging-to-trash');});
+  wrap.addEventListener('pointercancel',()=>{
+    resetDrag();trashHide();
+    wrap.classList.remove('dragging-to-trash');
+    document.body.style.userSelect='';
+    document.body.style.webkitUserSelect='';
+    // 취소 시 원래 자리 복귀
+    tb.x=origTbX;tb.y=origTbY;
+    const p=ST.pages[ST.cur];if(p)renderTB(p);
+  });
 
   wrap.appendChild(ta);wrap.appendChild(del);wrap.appendChild(rhR);
   CV().appendChild(wrap);
