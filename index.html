@@ -1394,7 +1394,8 @@ function renderImgs(page){
           if(!p.images.length)showEmpty();
           toast('이미지 삭제됨');
         },'삭제',
-        ()=>{// 취소: 데이터 그대로이므로 renderImgs만 호출
+        ()=>{// 취소: 원래 좌표로 복원 후 renderImgs
+          im.x=imOrigX; im.y=imOrigY;
           const _p=ST.pages[ST.cur];if(_p)renderImgs(_p);});
       } else {
         // 이동 확정 시에만 데이터 저장
@@ -1405,8 +1406,9 @@ function renderImgs(page){
       }
     });
     wrap.addEventListener('pointercancel',()=>{
-      // 취소: 데이터 그대로이므로 renderImgs만 호출
+      // 취소: 원래 좌표로 복원 후 renderImgs
       mvReset();
+      im.x=imOrigX; im.y=imOrigY;
       const _p=ST.pages[ST.cur];if(_p)renderImgs(_p);
     });
     wrap.appendChild(img);wrap.appendChild(del);wrap.appendChild(rh);
@@ -1577,7 +1579,8 @@ function renderHS(page){
           showConfirmDlg(`메모를 삭제할까요?`,`"${hs.title||`메모 ${i+1}`}"이(가) 삭제됩니다.`,
             ()=>delHS(hs.id),'삭제',
             ()=>{
-              // 취소: 데이터 그대로이므로 el 제거 후 renderHS만
+              // 취소: 원래 좌표 복원 후 renderHS
+              hs.x=hsOrigX; hs.y=hsOrigY; hs.rx=hsOrigRx; hs.ry=hsOrigRy; hs.imgId=hsOrigImgId;
               el.remove();
               const p=ST.pages[ST.cur];if(p)renderHS(p);
             });
@@ -1617,7 +1620,8 @@ function renderHS(page){
 
     el.addEventListener('pointercancel',()=>{
       resetState();trashHide();blockCvClick=false;
-      // 취소: 데이터 그대로이므로 el 제거 후 renderHS만
+      // 취소: 원래 좌표 복원 후 renderHS
+      hs.x=hsOrigX; hs.y=hsOrigY; hs.rx=hsOrigRx; hs.ry=hsOrigRy; hs.imgId=hsOrigImgId;
       el.remove();
       const p=ST.pages[ST.cur];if(p)renderHS(p);
     });
@@ -1815,7 +1819,8 @@ function makeTBEl(tb,W,H){
         p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
         wrap.remove();save();toast('텍스트 박스 삭제됨');
       },'삭제',()=>{
-        // 취소: 데이터 그대로이므로 wrap 제거 후 renderTB만
+        // 취소: 원래 좌표 복원 후 renderTB
+        tb.x=origTbX; tb.y=origTbY;
         const p=ST.pages[ST.cur];if(!p)return;
         wrap.remove();
         renderTB(p);
@@ -1832,7 +1837,8 @@ function makeTBEl(tb,W,H){
     wrap.classList.remove('dragging-to-trash');
     document.body.style.userSelect='';
     document.body.style.webkitUserSelect='';
-    // 취소: 데이터 그대로이므로 wrap 제거 후 renderTB만
+    // 취소: 원래 좌표로 복원 후 renderTB
+    tb.x=origTbX; tb.y=origTbY;
     const p=ST.pages[ST.cur];if(!p)return;
     wrap.remove();
     renderTB(p);
