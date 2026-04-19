@@ -182,10 +182,6 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 }
 .ci img{display:block;width:100%;height:100%;pointer-events:none;border-radius:2px;
   user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
-/* 이미지 삭제 버튼 */
-.ci-del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;
-  background:var(--rd);color:#fff;font-size:12px;font-weight:700;border:2px solid var(--bg);
-  display:none;align-items:center;justify-content:center;z-index:5;cursor:pointer;}
 /* 이미지 리사이즈 핸들 */
 .ci-rh{position:absolute;bottom:-7px;right:-7px;width:18px;height:18px;border-radius:3px;
   background:var(--gr);border:2px solid var(--bg);cursor:se-resize;
@@ -194,11 +190,12 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 /* edit 모드: 이미지 이동 + 리사이즈 통합 (move 흡수) */
 #cv.m-edit .ci{cursor:grab;pointer-events:all;}
 #cv.m-edit .ci:active{cursor:grabbing;}
-#cv.m-edit .ci-del{display:flex;}
 #cv.m-edit .ci-rh{display:block;}
+/* 선택된 이미지 하이라이트 */
+.ci.img-selected{outline:2px solid var(--ac);outline-offset:1px;}
+.ci.img-selected .ci-rh{display:block;}
 /* add-hs 모드: 이미지 위 커서를 십자로 */
 #cv.m-add-hs .ci{cursor:crosshair;pointer-events:all;}
-#cv.m-add-hs .ci-del{display:none;}
 #cv.m-add-hs .ci-rh{display:none;}
 /* 나머지 모드: 이미지는 배경 — 클릭 통과 */
 #cv.m-view .ci,
@@ -359,13 +356,6 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 /* 툴바 버튼 비활성 */
 .tbtn.disabled,.tbtn:disabled{opacity:.32;pointer-events:none;cursor:default;}
 .bnt.disabled,.bnt:disabled{opacity:.32;pointer-events:none;}
-/* 이미지 레이어 순서 버튼 */
-.ci-order{position:absolute;top:-8px;left:-8px;display:none;gap:2px;}
-.ci-ob{width:20px;height:20px;border-radius:4px;background:var(--s3);border:1.5px solid var(--bdL);
-  color:var(--txm);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;
-  cursor:pointer;line-height:1;}
-.ci-ob:active{background:var(--ac);color:#000;border-color:var(--ac);}
-#cv.m-edit .ci-order{display:flex;}
 #hsList{flex:1;overflow-y:auto;padding:6px;-webkit-overflow-scrolling:touch;}
 .hsc{padding:10px;background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:5px;cursor:pointer;}
 .hsc:hover,.hsc:active{border-color:rgba(14,165,233,.4);}
@@ -604,6 +594,14 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
         <button class="tbtn" id="bAddHs" onclick="startAddHs()">📝 메모 추가</button>
         <button class="tbtn" id="bAddTb" onclick="startAddTb()">🔤 텍스트 추가</button>
         <button class="tbtn" onclick="triggerImg()">🖼 이미지 추가</button>
+        <!-- 이미지 선택 시 표시 -->
+        <div id="imgCtrlBar" style="display:none;align-items:center;gap:5px;">
+          <div class="tsep"></div>
+          <span style="font-size:11px;color:var(--txs);font-family:var(--mono);">🖼 이미지</span>
+          <button class="tbtn" onclick="imgOrderUp()">▲ 위로</button>
+          <button class="tbtn" onclick="imgOrderDn()">▼ 아래로</button>
+          <button class="tbtn del" onclick="imgDelete()">🗑 삭제</button>
+        </div>
       </div>
 
       <input type="file" id="imgFile" accept="image/*" multiple style="display:none" onchange="loadImg(event)">
@@ -757,6 +755,7 @@ let activeTextBox = null; // 현재 편집 중인 텍스트박스 id
 let blockCvClick = false;  // 메모 리사이즈/D&D 후 캔버스 click 차단 플래그
 let addHsPending = false;  // 메모 추가 대기 모드
 let addTbPending = false;  // 텍스트 추가 대기 모드
+let selectedImgId = null;  // 현재 선택된 이미지 id
 // draw
 let dCol='#10b981',dSz=2,dEr=false,dOn=false,dHist=[],dLast=null;
 
@@ -1264,6 +1263,7 @@ function delPage(i){
 }
 function loadPage(i){
   ST.cur=i;save();renderPages();
+  deselectImg();
   const p=ST.pages[i];
   showPageCanvas(p);
   renderHSList(p);
@@ -1307,51 +1307,10 @@ function renderImgs(page){
     const wrap=document.createElement('div');
     wrap.className='ci';wrap.dataset.imid=im.id;
     wrap.style.cssText=`left:${im.x*W/100}px;top:${im.y*H/100}px;width:${im.w*W/100}px;height:${im.h*H/100}px;z-index:${10+zi};position:absolute;`;
+    if(im.id===selectedImgId) wrap.classList.add('img-selected');
     const img=new Image();img.src=im.data;
     img.style.cssText='display:block;width:100%;height:100%;pointer-events:none;border-radius:2px;';
     img.draggable=false;
-
-    // ── 위로/아래로 순서 버튼 ──
-    const orderBox=document.createElement('div');orderBox.className='ci-order';
-    const btnUp=document.createElement('button');btnUp.className='ci-ob';btnUp.textContent='▲';
-    btnUp.title='위로 (앞으로 가져오기)';
-    btnUp.addEventListener('pointerup',e=>{
-      e.stopPropagation();
-      const p=ST.pages[ST.cur];if(!p)return;
-      const idx=p.images.findIndex(x=>x.id===im.id);
-      if(idx<p.images.length-1){
-        [p.images[idx],p.images[idx+1]]=[p.images[idx+1],p.images[idx]];
-        save();renderImgs(p);renderHS(p);
-      }
-    });
-    const btnDn=document.createElement('button');btnDn.className='ci-ob';btnDn.textContent='▼';
-    btnDn.title='아래로 (뒤로 보내기)';
-    btnDn.addEventListener('pointerup',e=>{
-      e.stopPropagation();
-      const p=ST.pages[ST.cur];if(!p)return;
-      const idx=p.images.findIndex(x=>x.id===im.id);
-      if(idx>0){
-        [p.images[idx],p.images[idx-1]]=[p.images[idx-1],p.images[idx]];
-        save();renderImgs(p);renderHS(p);
-      }
-    });
-    orderBox.appendChild(btnUp);orderBox.appendChild(btnDn);
-
-    // ── 삭제 버튼 (× — edit 모드에서만 표시) ──
-    const del=document.createElement('button');del.className='ci-del';del.innerHTML='×';
-    del.addEventListener('pointerup',e=>{
-      e.stopPropagation();
-      if(!confirm('이미지 삭제?'))return;
-      const p=ST.pages[ST.cur];if(!p)return;
-      // 종속 메모 함께 삭제
-      p.hotspots=p.hotspots.filter(h=>h.imgId!==im.id);
-      p.images=p.images.filter(x=>x.id!==im.id);
-      wrap.remove();save();
-      renderHS(p);renderHSList(p);
-      // 이미지 전부 삭제돼도 페이지 캔버스 유지
-      updateToolbarDisabled();
-      toast('이미지 삭제됨');
-    });
 
     // ── 리사이즈 핸들 ──
     const rh=document.createElement('div');rh.className='ci-rh';
@@ -1373,7 +1332,7 @@ function renderImgs(page){
         if(_im){_im.w=nw/cvW()*100;_im.h=nh/cvH()*100;renderHS(_tp);}
       }
     });
-    rh.addEventListener('pointerup',e=>{
+    rh.addEventListener('pointerup',()=>{
       if(!rzStart)return;
       im.w=wrap.offsetWidth/cvW()*100;im.h=wrap.offsetHeight/cvH()*100;
       save();rzStart=null;
@@ -1381,7 +1340,7 @@ function renderImgs(page){
     });
     rh.addEventListener('pointercancel',()=>{rzStart=null;});
 
-    // ── 이미지 이동 (롱프레스 → D&D + 휴지통 삭제) ──
+    // ── 이미지 이동 + 클릭 선택 ──
     let mvStart=null,mvLpTimer=null,mvDragging=false;
     let imOrigX=im.x, imOrigY=im.y;
     function mvReset(){
@@ -1394,14 +1353,14 @@ function renderImgs(page){
     }
     wrap.addEventListener('pointerdown',e=>{
       if(mode!=='edit')return;
-      if(e.target===del||e.target===rh||e.target===btnUp||e.target===btnDn)return;
+      if(e.target===rh)return;
       e.stopPropagation();e.preventDefault();
       const p2=cvPt(e.clientX,e.clientY);
       imOrigX=im.x; imOrigY=im.y;
       mvStart={
         ox:p2.x-parseFloat(wrap.style.left), oy:p2.y-parseFloat(wrap.style.top),
         pid:e.pointerId,
-        cx:e.clientX, cy:e.clientY,          // dist 계산용 시작점
+        cx:e.clientX, cy:e.clientY,
         isMouse:e.pointerType==='mouse'
       };
       document.body.style.userSelect='none';
@@ -1419,7 +1378,6 @@ function renderImgs(page){
     });
     wrap.addEventListener('pointermove',e=>{
       if(!mvStart)return;
-      // 마우스: dist>4 시 즉시 드래그 시작
       if(!mvDragging && mvStart.isMouse){
         const dist=Math.sqrt(Math.pow(e.clientX-mvStart.cx,2)+Math.pow(e.clientY-mvStart.cy,2));
         if(dist>4){
@@ -1450,21 +1408,25 @@ function renderImgs(page){
       }
     });
     wrap.addEventListener('pointerup',e=>{
-      if(!mvDragging){clearTimeout(mvLpTimer);mvStart=null;return;}
+      const wasDragging=mvDragging;
       const overTrash=trashIsOver(e.clientX,e.clientY);
       mvReset();
+      if(!wasDragging){
+        // 클릭 → 이미지 선택 (이미 선택된 이미지면 그대로 유지)
+        selectImg(im.id);
+        return;
+      }
       if(overTrash){
         showConfirmDlg('이미지를 삭제할까요?','종속된 메모도 함께 삭제됩니다.',()=>{
           const p=ST.pages[ST.cur];if(!p)return;
-          // 종속 메모 함께 삭제
           p.hotspots=p.hotspots.filter(h=>h.imgId!==im.id);
           p.images=p.images.filter(x=>x.id!==im.id);
           wrap.remove();save();
+          if(selectedImgId===im.id) deselectImg();
           renderHS(p);renderHSList(p);
           updateToolbarDisabled();
           toast('이미지 삭제됨');
-        },'삭제',
-        ()=>{
+        },'삭제',()=>{
           im.x=imOrigX; im.y=imOrigY;
           const _p=ST.pages[ST.cur];if(!_p)return;
           renderImgs(_p);renderHS(_p);
@@ -1482,12 +1444,54 @@ function renderImgs(page){
       const _p=ST.pages[ST.cur];if(!_p)return;
       renderImgs(_p);renderHS(_p);
     });
-    wrap.appendChild(img);wrap.appendChild(orderBox);wrap.appendChild(del);wrap.appendChild(rh);
+    wrap.appendChild(img);wrap.appendChild(rh);
     CV().appendChild(wrap);
   });
 }
 
-// ── 이미지 기준 메모 좌표 → 캔버스 px 변환 ──
+// ── 이미지 선택 관리 ─────────────────────────
+function selectImg(id){
+  selectedImgId=id;
+  // 모든 .ci에서 선택 클래스 초기화 후 해당 이미지만 표시
+  CV().querySelectorAll('.ci').forEach(el=>{
+    el.classList.toggle('img-selected', el.dataset.imid==id);
+  });
+  $('imgCtrlBar').style.display='flex';
+}
+function deselectImg(){
+  selectedImgId=null;
+  CV().querySelectorAll('.ci').forEach(el=>el.classList.remove('img-selected'));
+  $('imgCtrlBar').style.display='none';
+}
+function imgOrderUp(){
+  const p=ST.pages[ST.cur];if(!p||!selectedImgId)return;
+  const idx=p.images.findIndex(x=>x.id===selectedImgId);
+  if(idx<p.images.length-1){
+    [p.images[idx],p.images[idx+1]]=[p.images[idx+1],p.images[idx]];
+    save();renderImgs(p);renderHS(p);
+  } else toast('이미 맨 위 레이어입니다');
+}
+function imgOrderDn(){
+  const p=ST.pages[ST.cur];if(!p||!selectedImgId)return;
+  const idx=p.images.findIndex(x=>x.id===selectedImgId);
+  if(idx>0){
+    [p.images[idx],p.images[idx-1]]=[p.images[idx-1],p.images[idx]];
+    save();renderImgs(p);renderHS(p);
+  } else toast('이미 맨 아래 레이어입니다');
+}
+function imgDelete(){
+  if(!selectedImgId)return;
+  const p=ST.pages[ST.cur];if(!p)return;
+  const im=p.images.find(x=>x.id===selectedImgId);if(!im)return;
+  showConfirmDlg('이미지를 삭제할까요?','종속된 메모도 함께 삭제됩니다.',()=>{
+    p.hotspots=p.hotspots.filter(h=>h.imgId!==selectedImgId);
+    p.images=p.images.filter(x=>x.id!==selectedImgId);
+    deselectImg();save();
+    renderImgs(p);renderHS(p);renderHSList(p);
+    updateToolbarDisabled();
+    toast('이미지 삭제됨');
+  },'삭제');
+}
 function hsPxPos(hs){
   const W=cvW(),H=cvH();
   if(hs.imgId!=null){
@@ -1952,6 +1956,14 @@ function makeTBEl(tb,W,H){
 // edit: 빈 곳 클릭 → 아무 것도 안 함
 function initCVEvents(){
   const cv=CV();
+
+  // edit 모드: 캔버스 빈 곳 클릭 → 이미지 선택 해제
+  cv.addEventListener('click',e=>{
+    if(mode!=='edit')return;
+    if(e.target.closest('.ci')||e.target.closest('.hs')||e.target.closest('.tb'))return;
+    if(blockCvClick){blockCvClick=false;return;}
+    deselectImg();
+  });
 
   // add-hs 모드: 이미지 위 클릭 → 메모 생성
   cv.addEventListener('click',e=>{
