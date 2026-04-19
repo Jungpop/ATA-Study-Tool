@@ -763,8 +763,8 @@ function folderHTML(fid, depth){
   const totalCnt=fps.length+children.reduce((a,c)=>a+countInFolder(c.id),0);
   const indent=depth>0?`style="padding-left:${depth*10}px"`:'';
   let inner='';
-  children.forEach(c=>inner+=folderHTML(c.id,depth+1));
   fps.forEach(p=>inner+=pH(p,ST.pages.indexOf(p)));
+  children.forEach(c=>inner+=folderHTML(c.id,depth+1));
   return `<div class="folder${depth>0?' subfolder':''}" data-fid="${f.id}" ${indent}>
     <div class="fhdr" onclick="toggleF('${f.id}')">
       <span class="farr ${open?'op':''}">▶</span>
