@@ -351,7 +351,16 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .szb.on{border-color:var(--ac);background:rgba(14,165,233,.12);}
 .dot{background:#fff;border-radius:50%;pointer-events:none;}
 
-/* ── RIGHT SIDEBAR ── */
+/* 툴바 버튼 비활성 */
+.tbtn.disabled,.tbtn:disabled{opacity:.32;pointer-events:none;cursor:default;}
+.bnt.disabled,.bnt:disabled{opacity:.32;pointer-events:none;}
+/* 이미지 레이어 순서 버튼 */
+.ci-order{position:absolute;top:-8px;left:-8px;display:none;gap:2px;}
+.ci-ob{width:20px;height:20px;border-radius:4px;background:var(--s3);border:1.5px solid var(--bdL);
+  color:var(--txm);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;line-height:1;}
+.ci-ob:active{background:var(--ac);color:#000;border-color:var(--ac);}
+#cv.m-edit .ci-order{display:flex;}
 #hsList{flex:1;overflow-y:auto;padding:6px;-webkit-overflow-scrolling:touch;}
 .hsc{padding:10px;background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:5px;cursor:pointer;}
 .hsc:hover,.hsc:active{border-color:rgba(14,165,233,.4);}
@@ -542,11 +551,13 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
     <div id="canvasArea">
       <!-- 고정 캔버스 컨테이너 -->
       <div id="cv" class="m-edit">
-        <div id="emptyState" onclick="triggerImg()">
-          <div class="ei">🗂️</div>
-          <div class="et">이미지를 추가하세요</div>
-          <div class="es">Flow Chart · 스케메틱 · 다이어그램</div>
-          <div class="ecta">이미지 선택하기</div>
+        <div id="emptyState">
+          <div class="ei">✈️</div>
+          <div class="et">시작하려면 페이지를 만드세요</div>
+          <div class="es">좌측 패널 또는 하단 📁 버튼으로 페이지를 추가하세요</div>
+        </div>
+        <div id="blankCanvas" style="display:none;position:absolute;inset:0;z-index:1;
+          display:none;align-items:center;justify-content:center;">
         </div>
         <!-- .ci 이미지들, .hs 핫스팟들, .tb 텍스트박스들은 JS로 추가 -->
         <canvas id="dl"></canvas><!-- 드로잉 레이어 z:20 -->
@@ -832,16 +843,35 @@ function resetAll(){
 }
 
 // ── INIT ─────────────────────────────────────
+// 툴바 비활성 상태 동기화
+function updateToolbarDisabled(){
+  const noPage = ST.cur < 0;
+  const noImg  = noPage || !ST.pages[ST.cur]?.images?.length;
+  // 페이지 없으면 전부 비활성
+  ['bView','bEdit','bDraw','bAddHs','bAddTb'].forEach(id=>{
+    const b=$(id); if(b) b.classList.toggle('disabled', noPage);
+  });
+  // 이미지 추가 버튼은 페이지만 있으면 활성
+  const bImg=document.querySelector('#tbBtns button[onclick="triggerImg()"]');
+  if(bImg) bImg.classList.toggle('disabled', noPage);
+  // 메모 추가는 이미지도 있어야 활성
+  const bHs=$('bAddHs'); if(bHs) bHs.classList.toggle('disabled', noImg);
+  // 모바일 하단
+  ['bnView','bnEdit','bnDraw'].forEach(id=>{
+    const b=$(id); if(b) b.classList.toggle('disabled', noPage);
+  });
+}
+
 function init(){
   load();
   checkMobile();
   initSidebars();
   renderPages();
-  if(ST.pages.length>0)loadPage(ST.cur>=0?ST.cur:0);
-  else renderEmptyHS();
+  if(ST.pages.length>0) loadPage(ST.cur>=0?ST.cur:0);
+  else showNoPage();
   initCVEvents();
   initDrawEvents();
-  setMode('edit'); // 초기 툴바 상태 반영
+  setMode('edit');
   window.addEventListener('resize',()=>{checkMobile();refreshPage();});
   window.addEventListener('orientationchange',()=>setTimeout(()=>{checkMobile();refreshPage();},200));
 }
@@ -858,7 +888,7 @@ function checkMobile(){
 function refreshPage(){
   if(ST.cur<0)return;
   const p=ST.pages[ST.cur];
-  if(!p||!p.images.length)return;
+  if(!p)return;
   renderAll(p);
 }
 
@@ -1221,36 +1251,45 @@ function initPageDnD(container){
 function delPage(i){
   if(!confirm(`"${ST.pages[i].name}" 삭제?`))return;
   ST.pages.splice(i,1);save();
-  if(!ST.pages.length){ST.cur=-1;renderPages();showEmpty();renderEmptyHS();}
+  if(!ST.pages.length){ST.cur=-1;renderPages();showNoPage();renderEmptyHS();}
   else loadPage(Math.min(i,ST.pages.length-1));
   toast('페이지 삭제됨');
 }
 function loadPage(i){
   ST.cur=i;save();renderPages();
   const p=ST.pages[i];
-  if(!p.images||!p.images.length){showEmpty();renderEmptyHS();return;}
-  renderAll(p);renderHSList(p);
+  showPageCanvas(p);
+  renderHSList(p);
 }
 
 // ── 전체 렌더 ────────────────────────────────
 function renderAll(page){
-  // 기존 레이어 요소 제거
   CV().querySelectorAll('.ci,.hs,.tb').forEach(e=>e.remove());
   $('emptyState').style.display='none';
-  // 이미지 렌더
   renderImgs(page);
-  // 핫스팟
   renderHS(page);
-  // 텍스트박스
   renderTB(page);
-  // 드로잉 레이어 동기화
   syncDL(page);
 }
-function showEmpty(){
+function showNoPage(){
+  // 페이지 없음: 안내 화면 + 모든 기능 비활성
   CV().querySelectorAll('.ci,.hs,.tb').forEach(e=>e.remove());
   $('emptyState').style.display='flex';
   DL().style.display='none';
   CTX().clearRect(0,0,DL().width,DL().height);
+  updateToolbarDisabled();
+}
+function showEmpty(){showNoPage();} // 하위 호환 alias
+
+function showPageCanvas(page){
+  // 페이지 있음: 빈 캔버스 활성 (이미지 없어도)
+  $('emptyState').style.display='none';
+  CV().querySelectorAll('.ci,.hs').forEach(e=>e.remove());
+  renderImgs(page);
+  renderHS(page);
+  renderTB(page);
+  syncDL(page);
+  updateToolbarDisabled();
 }
 
 // ── 이미지 렌더 ──────────────────────────────
@@ -1264,17 +1303,50 @@ function renderImgs(page){
     const img=new Image();img.src=im.data;
     img.style.cssText='display:block;width:100%;height:100%;pointer-events:none;border-radius:2px;';
     img.draggable=false;
-    // 삭제 버튼
+
+    // ── 위로/아래로 순서 버튼 ──
+    const orderBox=document.createElement('div');orderBox.className='ci-order';
+    const btnUp=document.createElement('button');btnUp.className='ci-ob';btnUp.textContent='▲';
+    btnUp.title='위로 (앞으로 가져오기)';
+    btnUp.addEventListener('pointerup',e=>{
+      e.stopPropagation();
+      const p=ST.pages[ST.cur];if(!p)return;
+      const idx=p.images.findIndex(x=>x.id===im.id);
+      if(idx<p.images.length-1){
+        [p.images[idx],p.images[idx+1]]=[p.images[idx+1],p.images[idx]];
+        save();renderImgs(p);renderHS(p);
+      }
+    });
+    const btnDn=document.createElement('button');btnDn.className='ci-ob';btnDn.textContent='▼';
+    btnDn.title='아래로 (뒤로 보내기)';
+    btnDn.addEventListener('pointerup',e=>{
+      e.stopPropagation();
+      const p=ST.pages[ST.cur];if(!p)return;
+      const idx=p.images.findIndex(x=>x.id===im.id);
+      if(idx>0){
+        [p.images[idx],p.images[idx-1]]=[p.images[idx-1],p.images[idx]];
+        save();renderImgs(p);renderHS(p);
+      }
+    });
+    orderBox.appendChild(btnUp);orderBox.appendChild(btnDn);
+
+    // ── 삭제 버튼 (× — edit 모드에서만 표시) ──
     const del=document.createElement('button');del.className='ci-del';del.innerHTML='×';
     del.addEventListener('pointerup',e=>{
       e.stopPropagation();
       if(!confirm('이미지 삭제?'))return;
-      page.images=page.images.filter(x=>x.id!==im.id);
+      const p=ST.pages[ST.cur];if(!p)return;
+      // 종속 메모 함께 삭제
+      p.hotspots=p.hotspots.filter(h=>h.imgId!==im.id);
+      p.images=p.images.filter(x=>x.id!==im.id);
       wrap.remove();save();
-      if(!page.images.length)showEmpty();
+      renderHS(p);renderHSList(p);
+      // 이미지 전부 삭제돼도 페이지 캔버스 유지
+      updateToolbarDisabled();
       toast('이미지 삭제됨');
     });
-    // 리사이즈 핸들
+
+    // ── 리사이즈 핸들 ──
     const rh=document.createElement('div');rh.className='ci-rh';
     let rzStart=null;
     rh.addEventListener('pointerdown',e=>{
@@ -1288,7 +1360,6 @@ function renderImgs(page){
       const nw=Math.max(40,rzStart.ow+(e.clientX-rzStart.ox));
       const nh=Math.max(30,rzStart.oh+(e.clientY-rzStart.oy));
       wrap.style.width=nw+'px';wrap.style.height=nh+'px';
-      // 리사이즈 중 종속 메모 실시간 추적
       const _tp=ST.pages[ST.cur];
       if(_tp){
         const _im=_tp.images.find(x=>x.id===im.id);
@@ -1299,13 +1370,13 @@ function renderImgs(page){
       if(!rzStart)return;
       im.w=wrap.offsetWidth/cvW()*100;im.h=wrap.offsetHeight/cvH()*100;
       save();rzStart=null;
-      // 종속된 메모 배지 위치 업데이트
       const _p=ST.pages[ST.cur];if(_p)renderHS(_p);
     });
     rh.addEventListener('pointercancel',()=>{rzStart=null;});
-    // 이미지 이동 — 롱프레스 0.5초 후 드래그 + 휴지통 드롭 삭제
+
+    // ── 이미지 이동 (롱프레스 → D&D + 휴지통 삭제) ──
     let mvStart=null,mvLpTimer=null,mvDragging=false;
-    let imOrigX=im.x, imOrigY=im.y; // 드래그 시작 전 원래 좌표
+    let imOrigX=im.x, imOrigY=im.y;
     function mvReset(){
       clearTimeout(mvLpTimer);mvLpTimer=null;mvDragging=false;mvStart=null;
       wrap.classList.remove('dragging-to-trash');
@@ -1316,12 +1387,11 @@ function renderImgs(page){
     }
     wrap.addEventListener('pointerdown',e=>{
       if(mode!=='edit')return;
-      if(e.target===del||e.target===rh)return;
+      if(e.target===del||e.target===rh||e.target===btnUp||e.target===btnDn)return;
       e.stopPropagation();e.preventDefault();
       const p2=cvPt(e.clientX,e.clientY);
-      imOrigX=im.x; imOrigY=im.y; // 매번 최신 원래 좌표 저장
+      imOrigX=im.x; imOrigY=im.y;
       mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top),pid:e.pointerId};
-      // 롱프레스 중 텍스트 선택 방지
       document.body.style.userSelect='none';
       document.body.style.webkitUserSelect='none';
       mvLpTimer=setTimeout(()=>{
@@ -1341,8 +1411,6 @@ function renderImgs(page){
       const over=trashIsOver(e.clientX,e.clientY);
       wrap.classList.toggle('dragging-to-trash',over);
       trashUpdateOver(e.clientX,e.clientY);
-      // DOM만 이동 — 데이터는 pointerup 확정 시에만 저장
-      // 메모 배지 실시간 추적: 임시 좌표로 renderHS
       const _tp=ST.pages[ST.cur];
       if(_tp){
         const _im=_tp.images.find(x=>x.id===im.id);
@@ -1350,7 +1418,7 @@ function renderImgs(page){
           const _sx=_im.x,_sy=_im.y;
           _im.x=nx/cvW()*100;_im.y=ny/cvH()*100;
           renderHS(_tp);
-          _im.x=_sx;_im.y=_sy; // 즉시 원복
+          _im.x=_sx;_im.y=_sy;
         }
       }
     });
@@ -1359,19 +1427,22 @@ function renderImgs(page){
       const overTrash=trashIsOver(e.clientX,e.clientY);
       mvReset();
       if(overTrash){
-        showConfirmDlg('이미지를 삭제할까요?','이 작업은 되돌릴 수 없습니다.',()=>{
+        showConfirmDlg('이미지를 삭제할까요?','종속된 메모도 함께 삭제됩니다.',()=>{
           const p=ST.pages[ST.cur];if(!p)return;
+          // 종속 메모 함께 삭제
+          p.hotspots=p.hotspots.filter(h=>h.imgId!==im.id);
           p.images=p.images.filter(x=>x.id!==im.id);
           wrap.remove();save();
-          if(!p.images.length)showEmpty();
+          renderHS(p);renderHSList(p);
+          updateToolbarDisabled();
           toast('이미지 삭제됨');
         },'삭제',
-        ()=>{// 취소: 원래 좌표로 복원 후 renderImgs + renderHS
+        ()=>{
           im.x=imOrigX; im.y=imOrigY;
           const _p=ST.pages[ST.cur];if(!_p)return;
-          renderImgs(_p);renderHS(_p);});
+          renderImgs(_p);renderHS(_p);
+        });
       } else {
-        // 이동 확정 시에만 데이터 저장
         im.x=parseFloat(wrap.style.left)/cvW()*100;
         im.y=parseFloat(wrap.style.top)/cvH()*100;
         save();
@@ -1379,13 +1450,12 @@ function renderImgs(page){
       }
     });
     wrap.addEventListener('pointercancel',()=>{
-      // 취소: 원래 좌표로 복원 후 renderImgs + renderHS
       mvReset();
       im.x=imOrigX; im.y=imOrigY;
       const _p=ST.pages[ST.cur];if(!_p)return;
       renderImgs(_p);renderHS(_p);
     });
-    wrap.appendChild(img);wrap.appendChild(del);wrap.appendChild(rh);
+    wrap.appendChild(img);wrap.appendChild(orderBox);wrap.appendChild(del);wrap.appendChild(rh);
     CV().appendChild(wrap);
   });
 }
@@ -1988,10 +2058,11 @@ function updateToolbarMode(m){
 }
 
 function setMode(m){
-  // add-hs / add-tb 는 내부적으로 mode 변수에 저장하고 CSS 클래스도 별도 적용
+  // 페이지 없으면 모드 전환 차단 (단 init 최초 호출은 통과)
+  if(ST.cur<0 && m!=='edit'){toast('페이지를 먼저 만드세요');return;}
   addHsPending = (m==='add-hs');
   addTbPending = (m==='add-tb');
-  mode = (m==='add-hs'||m==='add-tb') ? m : m;
+  mode = m;
   updateToolbarMode(m);
   CV().className='m-'+m;
 
@@ -2013,6 +2084,7 @@ function setMode(m){
 
 // 일회성 메모 추가 모드 진입
 function startAddHs(){
+  if(ST.cur<0){toast('페이지를 먼저 만드세요');return;}
   const p=ST.pages[ST.cur];
   if(!p||!p.images.length){toast('이미지를 먼저 추가하세요');return;}
   setMode('add-hs');
@@ -2020,8 +2092,7 @@ function startAddHs(){
 }
 // 일회성 텍스트 추가 모드 진입
 function startAddTb(){
-  const p=ST.pages[ST.cur];
-  if(!p||!p.images.length){toast('이미지를 먼저 추가하세요');return;}
+  if(ST.cur<0){toast('페이지를 먼저 만드세요');return;}
   setMode('add-tb');
   toast('텍스트를 추가할 위치를 탭하세요');
 }
@@ -2036,27 +2107,24 @@ function updateEditLabel(){}
 function closeEditMenuOutside(){}
 
 // ── 이미지 추가 ──────────────────────────────
-function triggerImg(){$('imgFile').click();}
+function triggerImg(){
+  if(ST.cur<0){toast('페이지를 먼저 만드세요');return;}
+  $('imgFile').click();
+}
 function loadImg(e){
   const files=Array.from(e.target.files);if(!files.length)return;
-  if(ST.cur===-1){
-    ST.pages.push({id:Date.now(),folderId:null,name:files[0].name.replace(/\.[^.]+$/,''),
-      images:[],hotspots:[],drawData:null,tboxes:[]});
-    ST.cur=ST.pages.length-1;renderPages();
-  }
+  if(ST.cur===-1){toast('페이지를 먼저 만드세요');return;}
   const page=ST.pages[ST.cur];if(!page.images)page.images=[];
   let done=0;
   files.forEach((file,fi)=>{
     const r=new FileReader();
     r.onload=ev=>{
-      // 이미지 자연 크기를 읽어 비율 유지하면서 캔버스의 70% 이내로 맞춤
       const imgEl=new Image();
       imgEl.onload=()=>{
         const W=cvW(),H=cvH();
         const maxW=W*0.70, maxH=H*0.70;
         const scale=Math.min(maxW/imgEl.naturalWidth, maxH/imgEl.naturalHeight, 1);
         const iw=imgEl.naturalWidth*scale, ih=imgEl.naturalHeight*scale;
-        // 여러 장일 때 조금씩 offset
         const offset=fi*3;
         const px=Math.max(0,(W-iw)/2/W*100+offset);
         const py=Math.max(0,(H-ih)/2/H*100+offset);
@@ -2256,7 +2324,8 @@ function confirmAdd(){
   }else{
     ST.pages.push({id:Date.now(),folderId:$('dlgFolder').value||null,name:name||'새 페이지',
       images:[],hotspots:[],drawData:null,tboxes:[]});
-    save();closeAdd();renderPages();loadPage(ST.pages.length-1);toast('페이지 추가됨');
+    save();closeAdd();renderPages();loadPage(ST.pages.length-1);
+    updateToolbarDisabled();toast('페이지 추가됨');
   }
 }
 function openPageEdit(i){
