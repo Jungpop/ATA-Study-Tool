@@ -244,15 +244,23 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   overflow:hidden;/* 스크롤바 숨김 - 자동 높이 조절로 대체 */}
 .tb textarea:focus{border-color:var(--gr);}
 .tb textarea::placeholder{color:rgba(255,255,255,.25);}
+/* 완료 상태 */
+.tb.done textarea{border-color:rgba(16,185,129,.2);background:rgba(6,16,30,.6);cursor:default;resize:none;}
+.tb.done textarea:focus{border-color:rgba(16,185,129,.2);}
+/* D&D 이동 중 */
+.tb.tb-dragging{opacity:.6;outline:2px solid var(--ac);border-radius:5px;}
+/* 롱프레스 준비 */
+@keyframes tb-lp-pulse{0%{box-shadow:0 0 0 0 rgba(14,165,233,.5);}70%{box-shadow:0 0 0 6px rgba(14,165,233,0);}100%{box-shadow:0 0 0 0 rgba(14,165,233,0);}}
+.tb.tb-ready{outline:1px solid rgba(14,165,233,.5);border-radius:5px;animation:tb-lp-pulse .9s ease-out;}
 .tb-del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;
   background:var(--rd);color:#fff;font-size:12px;font-weight:700;border:2px solid var(--bg);
   display:flex;align-items:center;justify-content:center;opacity:0;cursor:pointer;z-index:5;}
-.tb:hover .tb-del,.tb:focus-within .tb-del{opacity:1;}
-/* 너비 조절 핸들 (우측 중간) */
+.tb:hover .tb-del,.tb:focus-within .tb-del,.tb.done:hover .tb-del{opacity:1;}
+/* 너비 조절 핸들 (우측 중간) — 편집 중일 때만 표시 */
 .tb-rh-r{position:absolute;top:50%;right:-8px;transform:translateY(-50%);
   width:16px;height:32px;border-radius:4px;background:var(--gr);border:2px solid var(--bg);
   cursor:ew-resize;z-index:5;opacity:0;touch-action:none;}
-.tb:hover .tb-rh-r,.tb:focus-within .tb-rh-r{opacity:1;}
+.tb:not(.done):hover .tb-rh-r,.tb:focus-within .tb-rh-r{opacity:1;}
 /* view/draw 모드: 텍스트박스 비활성 */
 #cv.m-view .tb{pointer-events:none;}
 #cv.m-view .tb textarea{background:rgba(6,16,30,.6);}
@@ -1231,49 +1239,77 @@ function makeTBEl(tb,W,H){
   const ta=document.createElement('textarea');
   ta.value=tb.text||'';ta.placeholder='텍스트 입력…';
   ta.style.cssText=`font-size:${tb.fs||14}px;color:${tb.color||'#fff'};`;
-  // ① readOnly=true 상태로 생성 → focus() 시 키보드 안 올라옴 = 레이아웃 고정
-  ta.readOnly=true;
+  ta.readOnly=true; // iOS 레이아웃 밀림 방지용 초기값
 
-  // 자동 높이 조절 함수
+  // 자동 높이 조절
   function autoHeight(){
     ta.style.height='auto';
     ta.style.height=Math.max(34, ta.scrollHeight)+'px';
-    // 저장
     const p=ST.pages[ST.cur];if(!p)return;
     const t=p.tboxes.find(x=>x.id===tb.id);
-    if(t){
-      t.text=ta.value;
-      t.h=ta.offsetHeight/cvH()*100;
-      save();
-    }
+    if(t){t.text=ta.value;t.h=ta.offsetHeight/cvH()*100;save();}
   }
-
   ta.addEventListener('input',autoHeight);
 
-  // 포커스: activeTextBox 설정
-  ta.addEventListener('focus',()=>{
-    activeTextBox=tb.id;
-    // ② 다음 rAF에서 readOnly 해제 → 위치 확정 후 키보드 팝업
-    requestAnimationFrame(()=>{ ta.readOnly=false; });
+  // ── 완료/편집 상태 전환 ──
+  function enterDone(){
+    ta.blur();
+    ta.readOnly=true;
+    wrap.classList.add('done');
+    if(activeTextBox===tb.id) activeTextBox=null;
+    autoHeight();
+  }
+  function enterEdit(){
+    wrap.classList.remove('done');
+    ta.readOnly=true; // focus 전 readOnly → iOS 밀림 방지
+    ta.focus();       // focus 이벤트에서 rAF로 readOnly 해제
+    // 커서를 텍스트 끝으로
+    requestAnimationFrame(()=>{
+      ta.readOnly=false;
+      ta.selectionStart=ta.selectionEnd=ta.value.length;
+    });
+  }
+
+  // Enter = 완료, Shift+Enter = 줄바꿈
+  ta.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey){
+      e.preventDefault();
+      enterDone();
+    }
+    e.stopPropagation();
   });
 
-  // 포커스 해제: activeTextBox 초기화 + readOnly 복원(다음 포커스를 위해)
+  // 포커스: activeTextBox 설정 + iOS 밀림 방지
+  ta.addEventListener('focus',()=>{
+    activeTextBox=tb.id;
+    requestAnimationFrame(()=>{ ta.readOnly=false; });
+  });
   ta.addEventListener('blur',()=>{
     if(activeTextBox===tb.id) activeTextBox=null;
     ta.readOnly=true;
   });
 
-  ta.addEventListener('pointerdown',e=>e.stopPropagation());
+  // 완료 상태에서 더블탭/더블클릭 → 재편집
+  let lastTapTime=0;
+  wrap.addEventListener('pointerup',e=>{
+    if(!wrap.classList.contains('done'))return;
+    if(e.target===del)return;
+    const now=Date.now();
+    if(now-lastTapTime<350){
+      // 더블탭
+      e.stopPropagation();
+      enterEdit();
+    }
+    lastTapTime=now;
+  });
 
   // ── 삭제 버튼 ──
   const del=document.createElement('button');del.className='tb-del';del.textContent='×';
-  // pointerdown/up/click 모두 버블링 차단 → cv click 이벤트로 새 박스 생성 방지
   del.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();});
   del.addEventListener('pointerup',e=>{e.stopPropagation();e.preventDefault();});
   del.addEventListener('click',e=>{
     e.stopPropagation();e.preventDefault();
     if(!confirm('텍스트 박스를 삭제하시겠습니까?'))return;
-    // blur가 발생 안 할 수 있으므로 activeTextBox 직접 초기화
     if(activeTextBox===tb.id) activeTextBox=null;
     ta.readOnly=true;
     const p=ST.pages[ST.cur];if(!p)return;
@@ -1281,7 +1317,7 @@ function makeTBEl(tb,W,H){
     wrap.remove();save();toast('텍스트 박스 삭제됨');
   });
 
-  // ── 너비 조절 핸들 (우측) ──
+  // ── 너비 조절 핸들 (편집 중일 때만) ──
   const rhR=document.createElement('div');rhR.className='tb-rh-r';
   let rzW=null;
   rhR.addEventListener('pointerdown',e=>{
@@ -1293,7 +1329,6 @@ function makeTBEl(tb,W,H){
     if(!rzW)return;
     const nw=Math.max(80, rzW.ow+(e.clientX-rzW.ox));
     wrap.style.width=nw+'px';
-    // 너비 바뀌면 줄바꿈 재계산 → 높이 재조정
     autoHeight();
   });
   rhR.addEventListener('pointerup',e=>{
@@ -1304,36 +1339,68 @@ function makeTBEl(tb,W,H){
   });
   rhR.addEventListener('pointercancel',()=>{rzW=null;});
 
-  // ── 드래그 이동 ──
-  let mvStart=null;
+  // ── 완료 상태 롱프레스 D&D ──
+  let lpTimer=null,isDragging=false,mvStart=null;
+
+  function cancelLP(){
+    clearTimeout(lpTimer);lpTimer=null;
+    wrap.classList.remove('tb-ready');
+  }
+  function resetDrag(){
+    cancelLP();
+    isDragging=false;mvStart=null;
+    wrap.classList.remove('tb-dragging','tb-ready');
+    wrap.style.outline='';
+  }
+
   wrap.addEventListener('pointerdown',e=>{
-    if(e.target===ta||e.target===del||e.target===rhR)return;
-    e.stopPropagation();e.preventDefault();
-    wrap.setPointerCapture(e.pointerId);
+    // 편집 중이면 D&D 비활성
+    if(!wrap.classList.contains('done'))return;
+    if(e.target===del||e.target===rhR)return;
+    e.stopPropagation();
+
+    wrap.classList.add('tb-ready');
+    const startX=e.clientX, startY=e.clientY;
     const p2=cvPt(e.clientX,e.clientY);
-    mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top)};
+    mvStart={ox:p2.x-parseFloat(wrap.style.left), oy:p2.y-parseFloat(wrap.style.top)};
+
+    lpTimer=setTimeout(()=>{
+      isDragging=true;
+      wrap.classList.remove('tb-ready');
+      wrap.classList.add('tb-dragging');
+      try{wrap.setPointerCapture(e.pointerId);}catch(err){}
+      toast('이동 모드');
+    },900);
   });
+
   wrap.addEventListener('pointermove',e=>{
-    if(!mvStart)return;
+    if(!isDragging||!mvStart)return;
+    e.preventDefault();
     const p2=cvPt(e.clientX,e.clientY);
-    wrap.style.left=Math.max(0,p2.x-mvStart.ox)+'px';
-    wrap.style.top =Math.max(0,p2.y-mvStart.oy)+'px';
-  });
+    const nx=Math.max(0, Math.min(cvW()-wrap.offsetWidth,  p2.x-mvStart.ox));
+    const ny=Math.max(0, Math.min(cvH()-wrap.offsetHeight, p2.y-mvStart.oy));
+    wrap.style.left=nx+'px';
+    wrap.style.top =ny+'px';
+  },{passive:false});
+
   wrap.addEventListener('pointerup',e=>{
-    if(!mvStart)return;mvStart=null;
-    const p=ST.pages[ST.cur];if(!p)return;
-    const t=p.tboxes.find(x=>x.id===tb.id);
-    if(t){t.x=parseFloat(wrap.style.left)/cvW()*100;t.y=parseFloat(wrap.style.top)/cvH()*100;save();}
+    if(isDragging&&mvStart){
+      const p=ST.pages[ST.cur];
+      const t=p?.tboxes.find(x=>x.id===tb.id);
+      if(t){t.x=parseFloat(wrap.style.left)/cvW()*100;t.y=parseFloat(wrap.style.top)/cvH()*100;save();}
+    }
+    resetDrag();
   });
-  wrap.addEventListener('pointercancel',()=>{mvStart=null;});
+  wrap.addEventListener('pointercancel',resetDrag);
 
   wrap.appendChild(ta);wrap.appendChild(del);wrap.appendChild(rhR);
   CV().appendChild(wrap);
 
-  // 기존 텍스트 있으면 초기 높이 맞춤
+  // 기존 텍스트 있으면 완료 상태로, 없으면 편집 상태로 초기화
   requestAnimationFrame(()=>{
     ta.style.height='auto';
     ta.style.height=Math.max(34,ta.scrollHeight)+'px';
+    if(tb.text) wrap.classList.add('done');
   });
 }
 
@@ -1410,7 +1477,12 @@ function initCVEvents(){
     const pt=cvPt(e.clientX,e.clientY);
     const W=cvW(),H=cvH();
     if(!p.tboxes)p.tboxes=[];
-    const tb={id:Date.now(),x:pt.x/W*100,y:pt.y/H*100,w:25,h:5,text:'',fs:14,color:'#fff'};
+    // 기본 박스 크기(w=25% of W, h=34px)를 고려해 캔버스 안쪽으로 클램핑
+    const defW=Math.max(80, W*0.25);
+    const defH=34;
+    const cx=Math.min(pt.x, W-defW);
+    const cy=Math.min(pt.y, H-defH);
+    const tb={id:Date.now(),x:cx/W*100,y:cy/H*100,w:25,h:5,text:'',fs:14,color:'#fff'};
     p.tboxes.push(tb);save();
     makeTBEl(tb,W,H);
     // readOnly=true 상태로 focus → rAF에서 readOnly 해제 (레이아웃 밀림 방지)
