@@ -569,6 +569,8 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
 
       <!-- 필기 컨트롤 (draw 모드 전용) -->
       <div id="drawCtrlBar" style="display:none;align-items:center;gap:5px;flex-shrink:0;">
+        <button class="tbtn" onclick="setMode('edit')" style="flex-shrink:0;">✏️ 편집</button>
+        <div class="tsep"></div>
         <div class="cc on" id="c0" style="background:#10b981" onclick="setDC('#10b981',0)"></div>
         <div class="cc" id="c1" style="background:#ef4444" onclick="setDC('#ef4444',1)"></div>
         <div class="cc" id="c2" style="background:#f59e0b" onclick="setDC('#f59e0b',2)"></div>
@@ -2028,9 +2030,13 @@ function setEraser(){dEr=true;dSz=20;for(let j=0;j<4;j++){const b=$('s'+j);if(b)
 function undoDraw(){if(!dHist.length)return;CTX().putImageData(dHist.pop(),0,0);saveDraw();toast('실행 취소');}
 function clearDraw(){
   if(!confirm('모든 필기를 지우시겠습니까?'))return;
-  dHist=[];CTX().clearRect(0,0,DL().width,DL().height);
+  dHist=[];
+  const dl=DL();
+  CTX().clearRect(0,0,dl.width,dl.height);
   const p=ST.pages[ST.cur];if(p){p.drawData=null;save();}
-  DL().style.display='none';toast('필기 삭제됨');
+  // draw 모드 중이면 canvas 계속 표시 유지, 아닐 때만 숨김
+  if(mode!=='draw') dl.style.display='none';
+  toast('필기 삭제됨');
 }
 
 // ── 모드 ─────────────────────────────────────
