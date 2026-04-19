@@ -1398,19 +1398,39 @@ function renderImgs(page){
       e.stopPropagation();e.preventDefault();
       const p2=cvPt(e.clientX,e.clientY);
       imOrigX=im.x; imOrigY=im.y;
-      mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top),pid:e.pointerId};
+      mvStart={
+        ox:p2.x-parseFloat(wrap.style.left), oy:p2.y-parseFloat(wrap.style.top),
+        pid:e.pointerId,
+        cx:e.clientX, cy:e.clientY,          // dist 계산용 시작점
+        isMouse:e.pointerType==='mouse'
+      };
       document.body.style.userSelect='none';
       document.body.style.webkitUserSelect='none';
-      mvLpTimer=setTimeout(()=>{
-        mvDragging=true;
-        wrap.setPointerCapture(mvStart.pid);
-        CV().querySelectorAll('.ci').forEach(c=>c.style.outline='');
-        wrap.style.outline='2px solid var(--ac)';
-        trashShow();
-      },500);
+      if(!mvStart.isMouse){
+        // 터치/펜: 500ms 롱프레스
+        mvLpTimer=setTimeout(()=>{
+          mvDragging=true;
+          wrap.setPointerCapture(mvStart.pid);
+          CV().querySelectorAll('.ci').forEach(c=>c.style.outline='');
+          wrap.style.outline='2px solid var(--ac)';
+          trashShow();
+        },500);
+      }
     });
     wrap.addEventListener('pointermove',e=>{
-      if(!mvDragging||!mvStart)return;
+      if(!mvStart)return;
+      // 마우스: dist>4 시 즉시 드래그 시작
+      if(!mvDragging && mvStart.isMouse){
+        const dist=Math.sqrt(Math.pow(e.clientX-mvStart.cx,2)+Math.pow(e.clientY-mvStart.cy,2));
+        if(dist>4){
+          mvDragging=true;
+          wrap.setPointerCapture(mvStart.pid);
+          CV().querySelectorAll('.ci').forEach(c=>c.style.outline='');
+          wrap.style.outline='2px solid var(--ac)';
+          trashShow();
+        }
+      }
+      if(!mvDragging)return;
       const p2=cvPt(e.clientX,e.clientY);
       const nx=Math.max(0,Math.min(cvW()-20,p2.x-mvStart.ox));
       const ny=Math.max(0,Math.min(cvH()-20,p2.y-mvStart.oy));
@@ -1541,43 +1561,49 @@ function renderHS(page){
       if(e.target===del)return;
       e.stopPropagation();
       resetState();
-      // setPointerCapture는 move 진입 시에만 → 즉시 호출 시 pointerup 위치가
-      // 시작점으로 인식되어 캔버스 click 이벤트가 시작 위치에 발생하는 버그 방지
       pdStart={
         px:e.clientX, py:e.clientY,
         pid:e.pointerId,
         left:parseFloat(el.style.left), top:parseFloat(el.style.top),
-        sz:curSz, time:Date.now()
+        // transform:translate(-50%,-50%) 보정 포함한 클릭 오프셋
+        // el의 실제 렌더 위치 = style.left - sz/2, style.top - sz/2
+        // 포인터가 배지 내 어느 위치를 눌렀는지 = pt - (style.left - sz/2)
+        ox:cvPt(e.clientX,e.clientY).x - (parseFloat(el.style.left) - curSz/2),
+        oy:cvPt(e.clientX,e.clientY).y - (parseFloat(el.style.top)  - curSz/2),
+        sz:curSz, time:Date.now(),
+        isMouse: e.pointerType==='mouse'
       };
-      blockCvClick=false; // 단순 탭은 차단 안 함
-      // 롱프레스 중 텍스트 선택 방지
+      blockCvClick=false;
       document.body.style.userSelect='none';
       document.body.style.webkitUserSelect='none';
 
       if(mode==='edit'){
-        // 0.5초: 이동 준비
-        lpMove=setTimeout(()=>{
-          if(state!=='idle')return;
-          state='move';
-          blockCvClick=true;
-          // 이동 시작 직전 원래 좌표 저장
-          hsOrigX=hs.x; hsOrigY=hs.y; hsOrigRx=hs.rx; hsOrigRy=hs.ry; hsOrigImgId=hs.imgId;
-          try{el.setPointerCapture(pdStart.pid);}catch(err){}
-          el.classList.add('hs-ready');
-          trashShow();
-          setTimeout(()=>{
-            if(state!=='move')return;
-            el.classList.remove('hs-ready');
-            el.classList.add('hs-dragging');
-          },100);
-        },500);
-        // 3초: 삭제 경고
-        lpDelete=setTimeout(()=>{
-          if(state==='resize'||state==='move')return;
-          state='delete';
-          el.classList.add('hs-delwarn');
-          toast('손 떼면 삭제됩니다');
-        },3000);
+        if(pdStart.isMouse){
+          // 마우스: pointermove에서 dist>4 감지 시 즉시 이동 (클릭과 구분)
+        } else {
+          // 터치/펜: 0.5초 롱프레스 후 이동
+          lpMove=setTimeout(()=>{
+            if(state!=='idle')return;
+            state='move';
+            blockCvClick=true;
+            hsOrigX=hs.x; hsOrigY=hs.y; hsOrigRx=hs.rx; hsOrigRy=hs.ry; hsOrigImgId=hs.imgId;
+            try{el.setPointerCapture(pdStart.pid);}catch(err){}
+            el.classList.add('hs-ready');
+            trashShow();
+            setTimeout(()=>{
+              if(state!=='move')return;
+              el.classList.remove('hs-ready');
+              el.classList.add('hs-dragging');
+            },100);
+          },500);
+          // 3초: 삭제 경고 (터치 전용)
+          lpDelete=setTimeout(()=>{
+            if(state==='resize'||state==='move')return;
+            state='delete';
+            el.classList.add('hs-delwarn');
+            toast('손 떼면 삭제됩니다');
+          },3000);
+        }
       }
     });
 
@@ -1586,13 +1612,24 @@ function renderHS(page){
       const dx=e.clientX-pdStart.px, dy=e.clientY-pdStart.py;
       const dist=Math.sqrt(dx*dx+dy*dy);
 
-      if(state==='idle'&&dist>6&&mode==='edit'){
-        // 즉시 드래그 → 크기 변경
-        clearTimeout(lpMove);clearTimeout(lpDelete);
-        state='resize';
-        blockCvClick=true;
-        try{el.setPointerCapture(pdStart.pid);}catch(err){}
-        el.classList.add('hs-resizing');
+      if(state==='idle'&&mode==='edit'){
+        if(pdStart.isMouse&&dist>4){
+          // 마우스: 즉시 이동 모드로 전환
+          clearTimeout(lpMove);clearTimeout(lpDelete);
+          state='move';
+          blockCvClick=true;
+          hsOrigX=hs.x; hsOrigY=hs.y; hsOrigRx=hs.rx; hsOrigRy=hs.ry; hsOrigImgId=hs.imgId;
+          try{el.setPointerCapture(pdStart.pid);}catch(err){}
+          el.classList.add('hs-dragging');
+          trashShow();
+        } else if(!pdStart.isMouse&&dist>14){
+          // 터치/펜: 빠른 스와이프 → 크기 변경 (롱프레스 타이머 취소)
+          clearTimeout(lpMove);clearTimeout(lpDelete);
+          state='resize';
+          blockCvClick=true;
+          try{el.setPointerCapture(pdStart.pid);}catch(err){}
+          el.classList.add('hs-resizing');
+        }
       }
 
       if(state==='resize'){
@@ -1602,9 +1639,10 @@ function renderHS(page){
       } else if(state==='move'){
         e.preventDefault();
         const pt=cvPt(e.clientX,e.clientY);
-        let nx=pdStart.left+(pt.x-(cvPt(pdStart.px,pdStart.py).x));
-        let ny=pdStart.top +(pt.y-(cvPt(pdStart.px,pdStart.py).y));
-        // D&D 이동 중: 이미지 경계 해제, 캔버스 경계만 유지
+        // style.left/top은 배지 중심 좌표 (transform:-50%,-50% 기준)
+        // 포인터 위치에서 배지 내 클릭 오프셋을 빼면 배지 좌상단 → +sz/2 하면 중심
+        let nx=(pt.x - pdStart.ox) + curSz/2;
+        let ny=(pt.y - pdStart.oy) + curSz/2;
         nx=Math.max(-curSz/2, Math.min(cvW()-curSz/2, nx));
         ny=Math.max(-curSz/2, Math.min(cvH()-curSz/2, ny));
         el.style.left=nx+'px'; el.style.top=ny+'px';
@@ -1748,13 +1786,13 @@ function makeTBEl(tb,W,H){
     ta.readOnly=true;
   });
 
-  // 완료 상태에서 더블탭/더블클릭 → 재편집
+  // done 상태에서 더블탭 → 재편집 (드래그 중이면 무시)
   let lastTapTime=0;
   wrap.addEventListener('pointerup',e=>{
+    if(isDragging)return;
     if(!wrap.classList.contains('done'))return;
     const now=Date.now();
     if(now-lastTapTime<350){
-      // 더블탭
       e.stopPropagation();
       enterEdit();
     }
@@ -1803,28 +1841,46 @@ function makeTBEl(tb,W,H){
   let origTbX=tb.x, origTbY=tb.y;
 
   wrap.addEventListener('pointerdown',e=>{
-    if(!wrap.classList.contains('done'))return;
     if(e.target===rhR)return;
+    if(!wrap.classList.contains('done')) enterDone();
     e.stopPropagation();
-    // 드래그 시작 전 원래 위치 저장
     origTbX=tb.x; origTbY=tb.y;
     wrap.classList.add('tb-ready');
     const p2=cvPt(e.clientX,e.clientY);
-    mvStart={ox:p2.x-parseFloat(wrap.style.left), oy:p2.y-parseFloat(wrap.style.top)};
-    // 텍스트 선택 방지
+    mvStart={
+      ox:p2.x-parseFloat(wrap.style.left), oy:p2.y-parseFloat(wrap.style.top),
+      cx:e.clientX, cy:e.clientY,
+      isMouse:e.pointerType==='mouse'
+    };
     document.body.style.userSelect='none';
     document.body.style.webkitUserSelect='none';
-    lpTimer=setTimeout(()=>{
-      isDragging=true;
-      wrap.classList.remove('tb-ready');
-      wrap.classList.add('tb-dragging');
-      try{wrap.setPointerCapture(e.pointerId);}catch(err){}
-      trashShow();
-    },500);
+    if(!mvStart.isMouse){
+      // 터치/펜: 500ms 롱프레스
+      lpTimer=setTimeout(()=>{
+        isDragging=true;
+        wrap.classList.remove('tb-ready');
+        wrap.classList.add('tb-dragging');
+        try{wrap.setPointerCapture(e.pointerId);}catch(err){}
+        trashShow();
+      },500);
+    }
   });
 
   wrap.addEventListener('pointermove',e=>{
-    if(!isDragging||!mvStart)return;
+    if(!mvStart)return;
+    // 마우스: dist>4 시 즉시 드래그 시작
+    if(!isDragging && mvStart.isMouse){
+      const dist=Math.sqrt(Math.pow(e.clientX-mvStart.cx,2)+Math.pow(e.clientY-mvStart.cy,2));
+      if(dist>4){
+        isDragging=true;
+        cancelLP();
+        wrap.classList.remove('tb-ready');
+        wrap.classList.add('tb-dragging');
+        try{wrap.setPointerCapture(e.pointerId);}catch(err){}
+        trashShow();
+      }
+    }
+    if(!isDragging)return;
     e.preventDefault();
     const p2=cvPt(e.clientX,e.clientY);
     const nx=Math.max(0, Math.min(cvW()-wrap.offsetWidth,  p2.x-mvStart.ox));
