@@ -257,26 +257,21 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   opacity:0;cursor:pointer;z-index:5;
   transition:opacity .15s;
 }
-.hs:hover .hs-del{opacity:1;}
-.hs.showdel .hs-del{opacity:1;}
-#cv:not(.m-edit) .hs-del{display:none!important;}
-/* 배지 크기 조절 핸들 */
-.hs-rh{
-  position:absolute;bottom:-5px;right:-5px;
-  width:14px;height:14px;border-radius:3px;
-  background:var(--gr);border:2px solid var(--bg);
-  cursor:se-resize;z-index:6;
-  opacity:0;touch-action:none;
-  transition:opacity .15s;
-}
-.hs:hover .hs-rh{opacity:1;}
-.hs.showdel .hs-rh{opacity:1;}
-#cv:not(.m-edit) .hs-rh{display:none!important;}
-/* 메모 D&D 상태 */
+/* 삭제 버튼은 숨김 — 3초 롱프레스로 삭제 */
+.hs-del{display:none!important;}
+/* 메모 상태별 스타일 */
 @keyframes hs-lp-pulse{0%{box-shadow:0 0 0 0 rgba(14,165,233,.6);}70%{box-shadow:0 0 0 8px rgba(14,165,233,0);}100%{box-shadow:0 0 0 0 rgba(14,165,233,0);}}
+@keyframes hs-del-pulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,.7);}70%{box-shadow:0 0 0 10px rgba(239,68,68,0);}100%{box-shadow:0 0 0 0 rgba(239,68,68,0);}}
+/* 크기 변경 중 */
+.hs.hs-resizing{cursor:nwse-resize;}
+.hs.hs-resizing .hs-badge{box-shadow:0 4px 14px rgba(16,185,129,.6);}
+/* 이동 준비(1초) */
 .hs.hs-ready .hs-badge{animation:hs-lp-pulse .9s ease-out;}
+/* 이동 중 */
 .hs.hs-dragging{opacity:.75;z-index:50!important;}
 .hs.hs-dragging .hs-badge{box-shadow:0 6px 20px rgba(14,165,233,.7);transform:scale(1.15);}
+/* 삭제 대기(3초) */
+.hs.hs-delwarn .hs-badge{animation:hs-del-pulse .6s ease-out infinite;background:var(--rd);}
 
 /* 텍스트박스 z:40 */
 .tb{position:absolute;z-index:40;min-width:60px;}
@@ -688,6 +683,7 @@ let pageEditIdx = -1;
 let editId=null, viewId=null, popImg=null;
 let sL=false, sR=false;
 let activeTextBox = null; // 현재 편집 중인 텍스트박스 id
+let blockCvClick = false;  // 메모 리사이즈/D&D 후 캔버스 click 차단 플래그
 // draw
 let dCol='#10b981',dSz=2,dEr=false,dOn=false,dHist=[],dLast=null;
 
@@ -1292,91 +1288,111 @@ function renderHS(page){
     // 삭제 버튼
     const del=document.createElement('button');del.className='hs-del';del.textContent='×';
     del.addEventListener('pointerup',e=>{e.stopPropagation();if(confirm(`"${hs.title||`메모 ${i+1}`}" 삭제?`))delHS(hs.id);});
-    // 크기 조절 핸들
-    const rh=document.createElement('div');rh.className='hs-rh';
-    let rzStart=null;
-    rh.addEventListener('pointerdown',e=>{
-      e.stopPropagation();e.preventDefault();
-      rh.setPointerCapture(e.pointerId);
-      rzStart={ox:e.clientX,oy:e.clientY,os:sz};
-    });
-    rh.addEventListener('pointermove',e=>{
-      if(!rzStart)return;
-      const delta=Math.max(e.clientX-rzStart.ox, e.clientY-rzStart.oy);
-      const ns=Math.max(24,Math.min(64,rzStart.os+delta));
-      el.style.width=ns+'px';el.style.height=ns+'px';
-      badge.style.width=ns+'px';badge.style.height=ns+'px';
-      num.style.fontSize=Math.max(9,Math.round(ns*0.38))+'px';
-    });
-    rh.addEventListener('pointerup',e=>{
-      e.stopPropagation();e.preventDefault();
-      if(!rzStart)return;
-      const ns=parseInt(el.style.width);
-      hs.size=ns;save();rzStart=null;
-    });
-    rh.addEventListener('click',e=>{e.stopPropagation();e.preventDefault();});
-    rh.addEventListener('pointercancel',()=>{rzStart=null;});
-    // edit 모드 진입 시 이미 showdel 상태이면 즉시 적용
-    if(mode==='edit') el.classList.add('showdel');
-    el.appendChild(badge);el.appendChild(tip);el.appendChild(del);el.appendChild(rh);
+    el.appendChild(badge);el.appendChild(tip);el.appendChild(del);
 
-    // ── 롱프레스 D&D 이동 (edit 모드) ──
-    let lpTimer=null, isDragging=false, mvOffset=null;
+    // ── 통합 포인터 핸들러 ──
+    // 상태: idle → resize(즉시 드래그) / move(1초 롱프레스) / delete(3초 롱프레스)
+    let state='idle'; // 'idle'|'resize'|'move'|'delete'
+    let pdStart=null, lpMove=null, lpDelete=null;
+    let curSz=hs.size||32;
 
-    function cancelLP(){ clearTimeout(lpTimer); lpTimer=null; el.classList.remove('hs-ready'); }
-    function resetMV(){ cancelLP(); isDragging=false; mvOffset=null; el.classList.remove('hs-dragging','hs-ready'); }
-
-    // 종속 이미지 현재 px 경계 반환
     function imgBounds(){
       const W=cvW(),H=cvH();
       const p=ST.pages[ST.cur];
       const im=p&&hs.imgId!=null&&p.images.find(x=>x.id===hs.imgId);
-      if(!im) return null;
-      return {x:im.x*W/100, y:im.y*H/100, w:im.w*W/100, h:im.h*H/100};
+      if(!im)return null;
+      return{x:im.x*W/100,y:im.y*H/100,w:im.w*W/100,h:im.h*H/100};
+    }
+    function applySize(ns){
+      curSz=Math.max(24,Math.min(64,ns));
+      el.style.width=curSz+'px';el.style.height=curSz+'px';
+      badge.style.width=curSz+'px';badge.style.height=curSz+'px';
+      num.style.fontSize=Math.max(9,Math.round(curSz*0.38))+'px';
+    }
+    function resetState(){
+      clearTimeout(lpMove);clearTimeout(lpDelete);
+      lpMove=null;lpDelete=null;
+      state='idle';pdStart=null;
+      el.classList.remove('hs-ready','hs-dragging','hs-resizing','hs-delwarn');
     }
 
     el.addEventListener('pointerdown',e=>{
-      if(mode!=='edit')return;
-      if(e.target===del||e.target===rh)return;
+      if(mode!=='edit'&&mode!=='view')return;
+      if(e.target===del)return;
       e.stopPropagation();
-      cancelLP();
-      const pt=cvPt(e.clientX,e.clientY);
-      mvOffset={ox:pt.x-parseFloat(el.style.left), oy:pt.y-parseFloat(el.style.top)};
-      el.classList.add('hs-ready');
-      lpTimer=setTimeout(()=>{
-        isDragging=true;
-        el.classList.remove('hs-ready');
-        el.classList.add('hs-dragging');
-        try{el.setPointerCapture(e.pointerId);}catch(err){}
-        toast('메모 이동 모드');
-      },900);
+      resetState();
+      el.setPointerCapture(e.pointerId);
+      pdStart={
+        px:e.clientX, py:e.clientY,
+        left:parseFloat(el.style.left), top:parseFloat(el.style.top),
+        sz:curSz, time:Date.now()
+      };
+      blockCvClick=true;
+
+      if(mode==='edit'){
+        // 1초: 이동 준비
+        lpMove=setTimeout(()=>{
+          if(state!=='idle')return;
+          state='move';
+          el.classList.add('hs-ready');
+          setTimeout(()=>{
+            if(state!=='move')return;
+            el.classList.remove('hs-ready');
+            el.classList.add('hs-dragging');
+            toast('메모 이동 모드');
+          },100);
+        },1000);
+        // 3초: 삭제 경고
+        lpDelete=setTimeout(()=>{
+          if(state==='resize'||state==='move')return;
+          state='delete';
+          el.classList.add('hs-delwarn');
+          toast('손 떼면 삭제됩니다');
+        },3000);
+      }
     });
 
     el.addEventListener('pointermove',e=>{
-      if(!isDragging||!mvOffset)return;
-      e.preventDefault();
-      const pt=cvPt(e.clientX,e.clientY);
-      const sz=hs.size||32;
-      const b=imgBounds();
-      let nx=pt.x-mvOffset.ox, ny=pt.y-mvOffset.oy;
-      if(b){
-        // 이미지 경계 안으로 클램핑 (배지 중앙 기준)
-        nx=Math.max(b.x-sz/2, Math.min(b.x+b.w-sz/2, nx));
-        ny=Math.max(b.y-sz/2, Math.min(b.y+b.h-sz/2, ny));
+      if(!pdStart)return;
+      const dx=e.clientX-pdStart.px, dy=e.clientY-pdStart.py;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+
+      if(state==='idle'&&dist>6&&mode==='edit'){
+        // 즉시 드래그 → 크기 변경
+        clearTimeout(lpMove);clearTimeout(lpDelete);
+        state='resize';
+        el.classList.add('hs-resizing');
       }
-      el.style.left=nx+'px';
-      el.style.top =ny+'px';
+
+      if(state==='resize'){
+        e.preventDefault();
+        applySize(pdStart.sz+dist);
+      } else if(state==='move'){
+        e.preventDefault();
+        const pt=cvPt(e.clientX,e.clientY);
+        const b=imgBounds();
+        let nx=pdStart.left+(pt.x-(cvPt(pdStart.px,pdStart.py).x));
+        let ny=pdStart.top +(pt.y-(cvPt(pdStart.px,pdStart.py).y));
+        if(b){
+          nx=Math.max(b.x-curSz/2,Math.min(b.x+b.w-curSz/2,nx));
+          ny=Math.max(b.y-curSz/2,Math.min(b.y+b.h-curSz/2,ny));
+        }
+        el.style.left=nx+'px'; el.style.top=ny+'px';
+      }
     },{passive:false});
 
     el.addEventListener('pointerup',e=>{
-      const wasDragging=isDragging;
-      resetMV();
-      if(wasDragging){
+      const endState=state;
+      resetState();
+      setTimeout(()=>{blockCvClick=false;},50);
+
+      if(endState==='resize'){
+        hs.size=curSz;save();
+      } else if(endState==='move'){
         e.stopPropagation();e.preventDefault();
-        // 이동 완료: 새 위치를 이미지 상대좌표로 저장
         const W=cvW(),H=cvH();
-        const cx=parseFloat(el.style.left)+( hs.size||32)/2;
-        const cy=parseFloat(el.style.top) +( hs.size||32)/2;
+        const cx=parseFloat(el.style.left)+curSz/2;
+        const cy=parseFloat(el.style.top)+curSz/2;
         const p=ST.pages[ST.cur];
         const im=p&&hs.imgId!=null&&p.images.find(x=>x.id===hs.imgId);
         if(im){
@@ -1384,23 +1400,18 @@ function renderHS(page){
           hs.rx=Math.max(0,Math.min(100,(cx-ix)/iw*100));
           hs.ry=Math.max(0,Math.min(100,(cy-iy)/ih*100));
         }
-        hs.x=cx/W*100; hs.y=cy/H*100;
-        save();
-        return;
-      }
-      // 단순 탭 → 팝업
-      if(e.target===del||e.target===rh)return;
-      e.stopPropagation();
-      if(mode==='view')openView(hs.id);
-      else if(mode==='edit'){
-        if(e.pointerType==='touch'||e.pointerType==='pen'){
-          if(el.classList.contains('showdel')){el.classList.remove('showdel');openEdit(hs.id);}
-          else{CV().querySelectorAll('.hs').forEach(h=>h.classList.remove('showdel'));el.classList.add('showdel');}
-        }else openEdit(hs.id);
+        hs.x=cx/W*100;hs.y=cy/H*100;save();
+      } else if(endState==='delete'){
+        if(confirm(`"${hs.title||`메모 ${i+1}`}" 삭제?`))delHS(hs.id);
+      } else {
+        // 단순 탭 → 팝업
+        e.stopPropagation();
+        if(mode==='view')openView(hs.id);
+        else if(mode==='edit')openEdit(hs.id);
       }
     });
 
-    el.addEventListener('pointercancel',resetMV);
+    el.addEventListener('pointercancel',()=>{resetState();blockCvClick=false;});
     CV().appendChild(el);
   });
 }
@@ -1598,7 +1609,8 @@ function initCVEvents(){
   cv.addEventListener('click',e=>{
     if(mode!=='edit')return;
     if(e.target.closest('.hs')||e.target.closest('.tb'))return;
-    // 메모 리사이즈/D&D 직후 click 버블링 차단
+    // 메모 리사이즈/D&D 직후 click 차단
+    if(blockCvClick){blockCvClick=false;return;}
     if(e.target.closest('.hs-rh')||e.target.closest('.hs-del'))return;
     const p=ST.pages[ST.cur];if(!p||!p.images.length)return;
     const pt=cvPt(e.clientX,e.clientY);
@@ -1737,10 +1749,7 @@ const TIPS={
   move:     '이미지 드래그 → 이동 | 우하단 ■ 드래그 → 크기 조절 | × 버튼으로 삭제'
 };
 function setMode(m){
-  // edit 모드 나갈 때 showdel 전체 해제
-  if(mode==='edit'&&m!=='edit'){
-    CV().querySelectorAll('.hs.showdel').forEach(h=>h.classList.remove('showdel'));
-  }
+
   mode=m;
   ['edit','view','draw','text','move'].forEach(n=>{
     const b=$('b'+n.charAt(0).toUpperCase()+n.slice(1));if(b)b.className='tbtn'+(n===m?' on':'');
@@ -1751,13 +1760,7 @@ function setMode(m){
   CV().className='m-'+m;
   $('tip').textContent=TIPS[m]||'';
   $('drawCtrl').classList.toggle('show',m==='draw');
-  // edit 모드 진입 시 메모가 있으면 즉시 showdel 표시
-  if(m==='edit'){
-    const p=ST.pages[ST.cur];
-    if(p&&p.hotspots&&p.hotspots.length){
-      CV().querySelectorAll('.hs').forEach(h=>h.classList.add('showdel'));
-    }
-  }
+
   const dl=DL();
   const p=ST.pages[ST.cur];
   const W=cvW(), H=cvH();
@@ -1822,11 +1825,7 @@ function openEdit(id){
   switchTab(hs.tab||'text');
   $('editModal').style.display='flex';setTimeout(()=>$('eTitle').focus(),80);
 }
-function closeEdit(){
-  $('editModal').style.display='none';editId=null;
-  // edit 모드면 showdel UI 복원
-  if(mode==='edit') CV().querySelectorAll('.hs').forEach(h=>h.classList.add('showdel'));
-}
+function closeEdit(){$('editModal').style.display='none';editId=null;}
 function saveHS(){
   const p=ST.pages[ST.cur];const hs=p.hotspots.find(h=>h.id===editId);if(!hs)return;
   hs.title=$('eTitle').value;hs.text=$('eText').value;hs.tblData=tblGet();hs.imgData=popImg;
