@@ -1328,13 +1328,15 @@ function renderHS(page){
       if(e.target===del)return;
       e.stopPropagation();
       resetState();
-      el.setPointerCapture(e.pointerId);
+      // setPointerCapture는 move 진입 시에만 → 즉시 호출 시 pointerup 위치가
+      // 시작점으로 인식되어 캔버스 click 이벤트가 시작 위치에 발생하는 버그 방지
       pdStart={
         px:e.clientX, py:e.clientY,
+        pid:e.pointerId,
         left:parseFloat(el.style.left), top:parseFloat(el.style.top),
         sz:curSz, time:Date.now()
       };
-      blockCvClick=true;
+      blockCvClick=false; // 단순 탭은 차단 안 함
       // 롱프레스 중 텍스트 선택 방지
       document.body.style.userSelect='none';
       document.body.style.webkitUserSelect='none';
@@ -1344,6 +1346,8 @@ function renderHS(page){
         lpMove=setTimeout(()=>{
           if(state!=='idle')return;
           state='move';
+          blockCvClick=true; // 이동 시작 시점부터 차단
+          try{el.setPointerCapture(pdStart.pid);}catch(err){} // 이동 시에만 캡처
           el.classList.add('hs-ready');
           setTimeout(()=>{
             if(state!=='move')return;
@@ -1371,6 +1375,8 @@ function renderHS(page){
         // 즉시 드래그 → 크기 변경
         clearTimeout(lpMove);clearTimeout(lpDelete);
         state='resize';
+        blockCvClick=true;
+        try{el.setPointerCapture(pdStart.pid);}catch(err){}
         el.classList.add('hs-resizing');
       }
 
