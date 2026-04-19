@@ -314,6 +314,14 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #cv.m-move .tb{pointer-events:none;}
 
 /* ── TOOLBAR ── */
+/* 휴지통 존 전환 */
+#tb.trash-zone{background:rgba(239,68,68,.12)!important;border-top-color:rgba(239,68,68,.4)!important;transition:background .2s,border-top-color .2s;}
+#tb.trash-zone-over{background:rgba(239,68,68,.28)!important;border-top-color:var(--rd)!important;}
+#trashZoneInner{display:none;align-items:center;justify-content:center;gap:8px;
+  font-size:14px;color:var(--rd);font-weight:600;width:100%;}
+#trashZoneInner.show{display:flex;}
+/* 드래그 중 요소 */
+.dragging-to-trash{opacity:.55!important;outline:2px solid var(--rd)!important;border-radius:5px;}
 #tb{height:var(--tb);flex-shrink:0;background:var(--s1);border-top:1px solid var(--bd);
   display:flex;align-items:center;padding:0 10px;gap:5px;overflow-x:auto;scrollbar-width:none;}
 #tb::-webkit-scrollbar{display:none;}
@@ -408,6 +416,22 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .bnt .bi{font-size:18px;line-height:1;}
 .bnt.on{color:var(--ac);}
 .bnt:active{background:rgba(14,165,233,.08);}
+
+/* ── 생성 확인 다이얼로그 ── */
+#confirmDlg{position:fixed;inset:0;background:rgba(4,10,20,.78);z-index:600;
+  display:none;align-items:center;justify-content:center;padding:18px;
+  backdrop-filter:blur(4px);}
+#confirmDlg.open{display:flex;}
+.cdlg{background:var(--s1);border:1px solid var(--bdL);border-radius:14px;
+  padding:22px 24px;width:min(280px,92vw);box-shadow:var(--shL);}
+.cdlg-title{font-size:15px;font-weight:600;color:var(--wh);margin:0 0 6px;}
+.cdlg-sub{font-size:13px;color:var(--txm);margin:0 0 20px;line-height:1.5;}
+.cdlg-btns{display:flex;gap:8px;}
+.cdlg-btns button{flex:1;padding:10px;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;}
+.cdlg-cancel{background:transparent;border:1px solid var(--bd);color:var(--txm);}
+.cdlg-cancel:active{border-color:var(--ac);color:var(--ac);}
+.cdlg-ok{background:var(--ac);border:none;color:#000;font-weight:700;}
+.cdlg-ok:active{opacity:.85;}
 
 /* ── MODALS ── */
 .modal-wrap{position:fixed;inset:0;background:rgba(4,10,20,.88);z-index:500;display:flex;
@@ -550,6 +574,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
     </div>
     <!-- TOOLBAR -->
     <div id="tb" style="justify-content:center;">
+      <div id="trashZoneInner">🗑&nbsp; 여기에 놓으면 삭제됩니다</div>
       <!-- 편집 서브메뉴 팝업 -->
       <div id="editMenu">
         <button class="emitem on" id="em-edit" onclick="setModeMenu('edit')">
@@ -621,6 +646,18 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
 </div><!-- /shell -->
 
 <div id="toast"></div>
+
+<!-- 생성 확인 다이얼로그 -->
+<div id="confirmDlg">
+  <div class="cdlg">
+    <p class="cdlg-title" id="cdlgTitle">메모를 생성할까요?</p>
+    <p class="cdlg-sub"   id="cdlgSub">클릭한 위치에 새 메모가 추가됩니다.</p>
+    <div class="cdlg-btns">
+      <button class="cdlg-cancel" id="cdlgCancel">취소</button>
+      <button class="cdlg-ok"     id="cdlgOk">생성</button>
+    </div>
+  </div>
+</div>
 
 <!-- EDIT MODAL -->
 <div id="editModal" class="modal-wrap" style="display:none" onclick="if(event.target===this)closeEdit()">
@@ -752,6 +789,41 @@ function cvPt(clientX, clientY) {
 }
 
 function eh(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ── 휴지통 존 공통 유틸 ──────────────────────
+function trashShow(){
+  $('tb').classList.add('trash-zone');
+  $('trashZoneInner').classList.add('show');
+  // 기존 툴바 버튼들 숨기기
+  $('tb').querySelectorAll(':scope > *:not(#trashZoneInner)').forEach(el=>el.style.display='none');
+}
+function trashHide(){
+  $('tb').classList.remove('trash-zone','trash-zone-over');
+  $('trashZoneInner').classList.remove('show');
+  $('tb').querySelectorAll(':scope > *:not(#trashZoneInner)').forEach(el=>el.style.display='');
+}
+function trashIsOver(clientX, clientY){
+  const r=$('tb').getBoundingClientRect();
+  return clientX>=r.left&&clientX<=r.right&&clientY>=r.top&&clientY<=r.bottom;
+}
+function trashUpdateOver(clientX, clientY){
+  $('tb').classList.toggle('trash-zone-over', trashIsOver(clientX, clientY));
+}
+
+// ── 생성 확인 다이얼로그 ──────────────────────
+function showConfirmDlg(title, sub, onOk, okLabel='생성'){
+  $('cdlgTitle').textContent=title;
+  $('cdlgSub').textContent=sub;
+  $('cdlgOk').textContent=okLabel;
+  $('confirmDlg').classList.add('open');
+  const ok=$('cdlgOk'), cancel=$('cdlgCancel');
+  function cleanup(){$('confirmDlg').classList.remove('open');ok.onclick=null;cancel.onclick=null;}
+  ok.onclick=()=>{cleanup();onOk();};
+  cancel.onclick=()=>cleanup();
+  // 삭제 확인 시 빨간 버튼
+  ok.style.background=okLabel==='삭제'?'var(--rd)':'var(--ac)';
+  ok.style.color=okLabel==='삭제'?'#fff':'#000';
+}
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
 
 // ── 저장 / 불러오기 ──────────────────────────
@@ -1254,46 +1326,61 @@ function renderImgs(page){
       const _p=ST.pages[ST.cur];if(_p)renderHS(_p);
     });
     rh.addEventListener('pointercancel',()=>{rzStart=null;});
-    // 이동 드래그 — 핵심 수정: cvPt()로 #cv 기준 좌표 사용
-    let mvStart=null;
+    // 이미지 이동 — 롱프레스 0.5초 후 드래그 + 휴지통 드롭 삭제
+    let mvStart=null,mvLpTimer=null,mvDragging=false;
+    function mvReset(){
+      clearTimeout(mvLpTimer);mvLpTimer=null;mvDragging=false;mvStart=null;
+      wrap.classList.remove('dragging-to-trash');
+      wrap.style.outline='';
+      trashHide();
+    }
     wrap.addEventListener('pointerdown',e=>{
       if(mode!=='move')return;
       if(e.target===del||e.target===rh)return;
       e.stopPropagation();e.preventDefault();
-      wrap.setPointerCapture(e.pointerId);
-      CV().querySelectorAll('.ci').forEach(c=>c.style.outline='');
-      wrap.style.outline='2px solid var(--ac)';
-      // cvPt로 #cv 내부 좌표 변환 → 이미지 현재 위치와의 offset 계산
       const p2=cvPt(e.clientX,e.clientY);
-      mvStart={
-        ox: p2.x - parseFloat(wrap.style.left),
-        oy: p2.y - parseFloat(wrap.style.top)
-      };
+      mvStart={ox:p2.x-parseFloat(wrap.style.left),oy:p2.y-parseFloat(wrap.style.top),pid:e.pointerId};
+      mvLpTimer=setTimeout(()=>{
+        mvDragging=true;
+        wrap.setPointerCapture(mvStart.pid);
+        CV().querySelectorAll('.ci').forEach(c=>c.style.outline='');
+        wrap.style.outline='2px solid var(--ac)';
+        trashShow();
+      },500);
     });
     wrap.addEventListener('pointermove',e=>{
-      if(!mvStart)return;
+      if(!mvDragging||!mvStart)return;
       const p2=cvPt(e.clientX,e.clientY);
-      const nx=Math.max(0,Math.min(cvW()-20, p2.x - mvStart.ox));
-      const ny=Math.max(0,Math.min(cvH()-20, p2.y - mvStart.oy));
-      wrap.style.left=nx+'px';
-      wrap.style.top =ny+'px';
-      // 이동 중 종속 메모 실시간 추적
+      const nx=Math.max(0,Math.min(cvW()-20,p2.x-mvStart.ox));
+      const ny=Math.max(0,Math.min(cvH()-20,p2.y-mvStart.oy));
+      wrap.style.left=nx+'px';wrap.style.top=ny+'px';
+      const over=trashIsOver(e.clientX,e.clientY);
+      wrap.classList.toggle('dragging-to-trash',over);
+      trashUpdateOver(e.clientX,e.clientY);
       const _tp=ST.pages[ST.cur];
-      if(_tp){
-        const _im=_tp.images.find(x=>x.id===im.id);
-        if(_im){_im.x=nx/cvW()*100;_im.y=ny/cvH()*100;renderHS(_tp);}
-      }
+      if(_tp){const _im=_tp.images.find(x=>x.id===im.id);
+        if(_im){_im.x=nx/cvW()*100;_im.y=ny/cvH()*100;renderHS(_tp);}}
     });
     wrap.addEventListener('pointerup',e=>{
-      if(!mvStart)return;
-      im.x=parseFloat(wrap.style.left)/cvW()*100;
-      im.y=parseFloat(wrap.style.top)/cvH()*100;
-      save();mvStart=null;
-      wrap.style.outline='';
-      // 종속된 메모 배지 위치 업데이트
-      const _p=ST.pages[ST.cur];if(_p)renderHS(_p);
+      if(!mvDragging){clearTimeout(mvLpTimer);mvStart=null;return;}
+      const overTrash=trashIsOver(e.clientX,e.clientY);
+      mvReset();
+      if(overTrash){
+        showConfirmDlg('이미지를 삭제할까요?','이 작업은 되돌릴 수 없습니다.',()=>{
+          const p=ST.pages[ST.cur];if(!p)return;
+          p.images=p.images.filter(x=>x.id!==im.id);
+          wrap.remove();save();
+          if(!p.images.length)showEmpty();
+          toast('이미지 삭제됨');
+        },'삭제');
+      } else {
+        im.x=parseFloat(wrap.style.left)/cvW()*100;
+        im.y=parseFloat(wrap.style.top)/cvH()*100;
+        save();
+        const _p=ST.pages[ST.cur];if(_p)renderHS(_p);
+      }
     });
-    wrap.addEventListener('pointercancel',()=>{mvStart=null;wrap.style.outline='';});
+    wrap.addEventListener('pointercancel',()=>mvReset());
     wrap.appendChild(img);wrap.appendChild(del);wrap.appendChild(rh);
     CV().appendChild(wrap);
   });
@@ -1386,20 +1473,20 @@ function renderHS(page){
       document.body.style.webkitUserSelect='none';
 
       if(mode==='edit'){
-        // 1초: 이동 준비
+        // 0.5초: 이동 준비
         lpMove=setTimeout(()=>{
           if(state!=='idle')return;
           state='move';
-          blockCvClick=true; // 이동 시작 시점부터 차단
-          try{el.setPointerCapture(pdStart.pid);}catch(err){} // 이동 시에만 캡처
+          blockCvClick=true;
+          try{el.setPointerCapture(pdStart.pid);}catch(err){}
           el.classList.add('hs-ready');
+          trashShow();
           setTimeout(()=>{
             if(state!=='move')return;
             el.classList.remove('hs-ready');
             el.classList.add('hs-dragging');
-            toast('메모 이동 모드');
           },100);
-        },1000);
+        },500);
         // 3초: 삭제 경고
         lpDelete=setTimeout(()=>{
           if(state==='resize'||state==='move')return;
@@ -1426,8 +1513,6 @@ function renderHS(page){
 
       if(state==='resize'){
         e.preventDefault();
-        // A안: 오른쪽/아래 = 확대, 왼쪽/위 = 축소
-        // dx,dy 중 절댓값이 큰 방향 기준, 양수=확대 음수=축소
         const dominant=Math.abs(dx)>=Math.abs(dy)?dx:dy;
         applySize(pdStart.sz+dominant);
       } else if(state==='move'){
@@ -1441,40 +1526,51 @@ function renderHS(page){
           ny=Math.max(b.y-curSz/2,Math.min(b.y+b.h-curSz/2,ny));
         }
         el.style.left=nx+'px'; el.style.top=ny+'px';
+        const over=trashIsOver(e.clientX,e.clientY);
+        el.classList.toggle('dragging-to-trash',over);
+        trashUpdateOver(e.clientX,e.clientY);
       }
     },{passive:false});
 
     el.addEventListener('pointerup',e=>{
       const endState=state;
+      const overTrash=trashIsOver(e.clientX,e.clientY);
       resetState();
+      trashHide();
+      el.classList.remove('dragging-to-trash');
       setTimeout(()=>{blockCvClick=false;},50);
 
       if(endState==='resize'){
         hs.size=curSz;save();
       } else if(endState==='move'){
         e.stopPropagation();e.preventDefault();
-        const W=cvW(),H=cvH();
-        const cx=parseFloat(el.style.left)+curSz/2;
-        const cy=parseFloat(el.style.top)+curSz/2;
-        const p=ST.pages[ST.cur];
-        const im=p&&hs.imgId!=null&&p.images.find(x=>x.id===hs.imgId);
-        if(im){
-          const ix=im.x*W/100,iy=im.y*H/100,iw=im.w*W/100,ih=im.h*H/100;
-          hs.rx=Math.max(0,Math.min(100,(cx-ix)/iw*100));
-          hs.ry=Math.max(0,Math.min(100,(cy-iy)/ih*100));
+        if(overTrash){
+          showConfirmDlg(`메모를 삭제할까요?`,`"${hs.title||`메모 ${i+1}`}"이(가) 삭제됩니다.`,
+            ()=>delHS(hs.id),'삭제');
+        } else {
+          const W=cvW(),H=cvH();
+          const cx=parseFloat(el.style.left)+curSz/2;
+          const cy=parseFloat(el.style.top)+curSz/2;
+          const p=ST.pages[ST.cur];
+          const im=p&&hs.imgId!=null&&p.images.find(x=>x.id===hs.imgId);
+          if(im){
+            const ix=im.x*W/100,iy=im.y*H/100,iw=im.w*W/100,ih=im.h*H/100;
+            hs.rx=Math.max(0,Math.min(100,(cx-ix)/iw*100));
+            hs.ry=Math.max(0,Math.min(100,(cy-iy)/ih*100));
+          }
+          hs.x=cx/W*100;hs.y=cy/H*100;save();
         }
-        hs.x=cx/W*100;hs.y=cy/H*100;save();
       } else if(endState==='delete'){
-        if(confirm(`"${hs.title||`메모 ${i+1}`}" 삭제?`))delHS(hs.id);
+        showConfirmDlg(`메모를 삭제할까요?`,`"${hs.title||`메모 ${i+1}`}"이(가) 삭제됩니다.`,
+          ()=>delHS(hs.id),'삭제');
       } else {
-        // 단순 탭 → 팝업
         e.stopPropagation();
         if(mode==='view')openView(hs.id);
         else if(mode==='edit')openEdit(hs.id);
       }
     });
 
-    el.addEventListener('pointercancel',()=>{resetState();blockCvClick=false;});
+    el.addEventListener('pointercancel',()=>{resetState();trashHide();el.classList.remove('dragging-to-trash');blockCvClick=false;});
     CV().appendChild(el);
   });
 }
@@ -1629,8 +1725,8 @@ function makeTBEl(tb,W,H){
       wrap.classList.remove('tb-ready');
       wrap.classList.add('tb-dragging');
       try{wrap.setPointerCapture(e.pointerId);}catch(err){}
-      toast('이동 모드');
-    },900);
+      trashShow();
+    },500);
   });
 
   wrap.addEventListener('pointermove',e=>{
@@ -1641,17 +1737,32 @@ function makeTBEl(tb,W,H){
     const ny=Math.max(0, Math.min(cvH()-wrap.offsetHeight, p2.y-mvStart.oy));
     wrap.style.left=nx+'px';
     wrap.style.top =ny+'px';
+    const over=trashIsOver(e.clientX,e.clientY);
+    wrap.classList.toggle('dragging-to-trash',over);
+    trashUpdateOver(e.clientX,e.clientY);
   },{passive:false});
 
   wrap.addEventListener('pointerup',e=>{
-    if(isDragging&&mvStart){
+    const wasDragging=isDragging;
+    const overTrash=trashIsOver(e.clientX,e.clientY);
+    resetDrag();
+    trashHide();
+    wrap.classList.remove('dragging-to-trash');
+    if(wasDragging&&mvStart===null&&overTrash){
+      // 휴지통 드롭 → 삭제 확인
+      showConfirmDlg('텍스트를 삭제할까요?','이 텍스트 박스가 삭제됩니다.',()=>{
+        if(activeTextBox===tb.id) activeTextBox=null;
+        const p=ST.pages[ST.cur];if(!p)return;
+        p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
+        wrap.remove();save();toast('텍스트 박스 삭제됨');
+      },'삭제');
+    } else if(wasDragging){
       const p=ST.pages[ST.cur];
       const t=p?.tboxes.find(x=>x.id===tb.id);
       if(t){t.x=parseFloat(wrap.style.left)/cvW()*100;t.y=parseFloat(wrap.style.top)/cvH()*100;save();}
     }
-    resetDrag();
   });
-  wrap.addEventListener('pointercancel',resetDrag);
+  wrap.addEventListener('pointercancel',()=>{resetDrag();trashHide();wrap.classList.remove('dragging-to-trash');});
 
   wrap.appendChild(ta);wrap.appendChild(del);wrap.appendChild(rhR);
   CV().appendChild(wrap);
@@ -1689,9 +1800,15 @@ function initCVEvents(){
     // 이미지 내부 상대 좌표 %로 저장
     const ix=hitImg.x*W/100,iy=hitImg.y*H/100,iw=hitImg.w*W/100,ih=hitImg.h*H/100;
     const rx=(pt.x-ix)/iw*100, ry=(pt.y-iy)/ih*100;
-    const hs={id:Date.now(),imgId:hitImg.id,rx,ry,x:pt.x/W*100,y:pt.y/H*100,
-      w:0,h:0,size:32,title:'',text:'',tblData:null,imgData:null,tab:'text'};
-    p.hotspots.push(hs);renderHS(p);renderHSList(p);save();openEdit(hs.id);
+    showConfirmDlg(
+      '메모를 생성할까요?',
+      '클릭한 위치에 새 메모가 추가됩니다.',
+      ()=>{
+        const hs={id:Date.now(),imgId:hitImg.id,rx,ry,x:pt.x/W*100,y:pt.y/H*100,
+          w:0,h:0,size:32,title:'',text:'',tblData:null,imgData:null,tab:'text'};
+        p.hotspots.push(hs);renderHS(p);renderHSList(p);save();openEdit(hs.id);
+      }
+    );
   });
 
   // text 모드: 빈 곳 클릭 → 텍스트박스 추가 (단, 이미 편집 중이면 blur만)
@@ -1723,19 +1840,23 @@ function initCVEvents(){
     const pt=cvPt(e.clientX,e.clientY);
     const W=cvW(),H=cvH();
     if(!p.tboxes)p.tboxes=[];
-    // 기본 박스 크기(w=25% of W, h=34px)를 고려해 캔버스 안쪽으로 클램핑
     const defW=Math.max(80, W*0.25);
     const defH=34;
     const cx=Math.min(pt.x, W-defW);
     const cy=Math.min(pt.y, H-defH);
-    const tb={id:Date.now(),x:cx/W*100,y:cy/H*100,w:25,h:5,text:'',fs:14,color:'#fff'};
-    p.tboxes.push(tb);save();
-    makeTBEl(tb,W,H);
-    // readOnly=true 상태로 focus → rAF에서 readOnly 해제 (레이아웃 밀림 방지)
-    requestAnimationFrame(()=>{
-      const el=CV().querySelector(`.tb[data-tid="${tb.id}"] textarea`);
-      if(el) el.focus();
-    });
+    showConfirmDlg(
+      '텍스트를 생성할까요?',
+      '클릭한 위치에 새 텍스트 박스가 추가됩니다.',
+      ()=>{
+        const tb={id:Date.now(),x:cx/W*100,y:cy/H*100,w:25,h:5,text:'',fs:14,color:'#fff'};
+        p.tboxes.push(tb);save();
+        makeTBEl(tb,W,H);
+        requestAnimationFrame(()=>{
+          const el=CV().querySelector(`.tb[data-tid="${tb.id}"] textarea`);
+          if(el) el.focus();
+        });
+      }
+    );
   });
 }
 
@@ -1768,6 +1889,8 @@ function initDrawEvents(){
   dl.addEventListener('pointerdown',e=>{
     if(mode!=='draw')return;
     e.preventDefault();dl.setPointerCapture(e.pointerId);
+    // 필기 시작 시 편집 서브메뉴 닫기
+    closeEditMenu();
     dHist.push(CTX().getImageData(0,0,dl.width,dl.height));
     if(dHist.length>40)dHist.shift();
     dOn=true;dLast=dlPt(e);
