@@ -1273,6 +1273,9 @@ function makeTBEl(tb,W,H){
   del.addEventListener('click',e=>{
     e.stopPropagation();e.preventDefault();
     if(!confirm('텍스트 박스를 삭제하시겠습니까?'))return;
+    // blur가 발생 안 할 수 있으므로 activeTextBox 직접 초기화
+    if(activeTextBox===tb.id) activeTextBox=null;
+    ta.readOnly=true;
     const p=ST.pages[ST.cur];if(!p)return;
     p.tboxes=p.tboxes.filter(x=>x.id!==tb.id);
     wrap.remove();save();toast('텍스트 박스 삭제됨');
