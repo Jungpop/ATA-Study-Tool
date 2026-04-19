@@ -238,6 +238,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .hs-badge-num{
   font-size:12px;font-family:var(--mono);font-weight:700;
   color:#fff;pointer-events:none;line-height:1;
+  user-select:none;-webkit-user-select:none;
+}
+.hs{
+  user-select:none;-webkit-user-select:none;
+  touch-action:none;
 }
 .hs-tip{
   position:absolute;bottom:38px;left:50%;transform:translateX(-50%);
@@ -1314,6 +1319,8 @@ function renderHS(page){
       lpMove=null;lpDelete=null;
       state='idle';pdStart=null;
       el.classList.remove('hs-ready','hs-dragging','hs-resizing','hs-delwarn');
+      document.body.style.userSelect='';
+      document.body.style.webkitUserSelect='';
     }
 
     el.addEventListener('pointerdown',e=>{
@@ -1328,6 +1335,9 @@ function renderHS(page){
         sz:curSz, time:Date.now()
       };
       blockCvClick=true;
+      // 롱프레스 중 텍스트 선택 방지
+      document.body.style.userSelect='none';
+      document.body.style.webkitUserSelect='none';
 
       if(mode==='edit'){
         // 1초: 이동 준비
@@ -1366,7 +1376,10 @@ function renderHS(page){
 
       if(state==='resize'){
         e.preventDefault();
-        applySize(pdStart.sz+dist);
+        // A안: 오른쪽/아래 = 확대, 왼쪽/위 = 축소
+        // dx,dy 중 절댓값이 큰 방향 기준, 양수=확대 음수=축소
+        const dominant=Math.abs(dx)>=Math.abs(dy)?dx:dy;
+        applySize(pdStart.sz+dominant);
       } else if(state==='move'){
         e.preventDefault();
         const pt=cvPt(e.clientX,e.clientY);
