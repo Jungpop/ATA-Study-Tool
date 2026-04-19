@@ -202,11 +202,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #cv.m-draw .ci,
 #cv.m-add-tb .ci{pointer-events:none;}
 
-/* 드로잉 레이어 z:20 */
+/* 드로잉 레이어 — 이미지/메모 위, 텍스트박스 아래 */
 #dl{
   position:absolute;left:0;top:0;
-  z-index:20;
-  pointer-events:none;  /* 기본: 통과 */
+  z-index:200;
+  pointer-events:none;
   display:none;
 }
 /* draw 모드에서만 pointer-events 활성 */
@@ -217,9 +217,9 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #cv.m-add-hs #dl,
 #cv.m-add-tb #dl{pointer-events:none;}
 
-/* 메모 배지 z:30 */
+/* 메모 배지 — z-index는 JS에서 이미지 레이어 기반으로 동적 설정 */
 .hs{
-  position:absolute;z-index:30;
+  position:absolute;
   width:32px;height:32px;
   transform:translate(-50%,-50%);
   cursor:pointer;
@@ -277,14 +277,14 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .hs.hs-resizing .hs-badge{box-shadow:0 4px 14px rgba(16,185,129,.6);}
 /* 이동 준비(1초) */
 .hs.hs-ready .hs-badge{animation:hs-lp-pulse .9s ease-out;}
-/* 이동 중 */
-.hs.hs-dragging{opacity:.75;z-index:50!important;}
+/* 이동 중 — 모든 이미지/메모 위로 */
+.hs.hs-dragging{opacity:.75;z-index:199!important;}
 .hs.hs-dragging .hs-badge{box-shadow:0 6px 20px rgba(14,165,233,.7);transform:scale(1.15);}
 /* 삭제 대기(3초) */
 .hs.hs-delwarn .hs-badge{animation:hs-del-pulse .6s ease-out infinite;background:var(--rd);}
 
-/* 텍스트박스 z:40 */
-.tb{position:absolute;z-index:40;min-width:60px;}
+/* 텍스트박스 — 필기 위 최상단 */
+.tb{position:absolute;z-index:300;min-width:60px;}
 .tb textarea{display:block;width:100%;min-height:34px;background:rgba(6,16,30,.82);
   border:1.5px solid rgba(16,185,129,.6);border-radius:5px;color:#fff;font-size:14px;
   font-family:var(--sans);padding:7px 9px;resize:none;outline:none;line-height:1.6;
@@ -1306,7 +1306,7 @@ function renderImgs(page){
   page.images.forEach((im,zi)=>{
     const wrap=document.createElement('div');
     wrap.className='ci';wrap.dataset.imid=im.id;
-    wrap.style.cssText=`left:${im.x*W/100}px;top:${im.y*H/100}px;width:${im.w*W/100}px;height:${im.h*H/100}px;z-index:${10+zi};position:absolute;`;
+    wrap.style.cssText=`left:${im.x*W/100}px;top:${im.y*H/100}px;width:${im.w*W/100}px;height:${im.h*H/100}px;z-index:${10+zi*2};position:absolute;`;
     if(im.id===selectedImgId) wrap.classList.add('img-selected');
     const img=new Image();img.src=im.data;
     img.style.cssText='display:block;width:100%;height:100%;pointer-events:none;border-radius:2px;';
@@ -1515,7 +1515,10 @@ function renderHS(page){
     el.className='hs';el.dataset.id=hs.id;
     const sz=hs.size||32;
     const pos=hsPxPos(hs);
-    el.style.cssText=`left:${pos.x}px;top:${pos.y}px;width:${sz}px;height:${sz}px;position:absolute;`;
+    // 종속 이미지의 z-index 바로 위에 배치 (이미지: 10+zi*2, 메모: 10+zi*2+1)
+    const imgIdx=hs.imgId!=null ? page.images.findIndex(x=>x.id===hs.imgId) : -1;
+    const hsZ = imgIdx>=0 ? (10+imgIdx*2+1) : (10+page.images.length*2+1);
+    el.style.cssText=`left:${pos.x}px;top:${pos.y}px;width:${sz}px;height:${sz}px;position:absolute;z-index:${hsZ};`;
     // 배지 원형
     const badge=document.createElement('div');badge.className='hs-badge';
     badge.style.cssText=`width:${sz}px;height:${sz}px;`;
