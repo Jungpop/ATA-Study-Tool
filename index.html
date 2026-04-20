@@ -103,6 +103,13 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   font-size:12px;font-weight:500;font-family:var(--sans);outline:none;width:100%;min-width:60px;padding:1px 2px;}
 .fname.editing,.pname.editing{overflow:visible;}
 .uncat{padding:5px 7px 2px;font-size:9px;color:var(--txs);font-family:var(--mono);letter-spacing:1.5px;}
+.drag-handle{
+  font-size:13px;color:var(--txs);cursor:grab;flex-shrink:0;
+  padding:0 4px;touch-action:none;user-select:none;-webkit-user-select:none;
+  opacity:0;transition:opacity .15s;
+}
+.fhdr:hover .drag-handle,.fhdr:active .drag-handle,
+.pitem:hover .drag-handle,.pitem:active .drag-handle{opacity:1;}
 /* 폴더/페이지 D&D */
 .folder{touch-action:none;user-select:none;-webkit-user-select:none;}
 .pitem{touch-action:none;user-select:none;-webkit-user-select:none;}
@@ -1040,6 +1047,7 @@ function folderHTML(fid, depth){
   children.forEach(c=>inner+=folderHTML(c.id,depth+1));
   return `<div class="folder${depth>0?' subfolder':''}" data-fid="${f.id}" ${indent}>
     <div class="fhdr">
+      <span class="drag-handle" title="드래그">⠿</span>
       <span class="farr ${open?'op':''}" onclick="event.stopPropagation();toggleF('${f.id}')">▶</span>
       <span style="font-size:12px;flex-shrink:0">${depth>0?'📂':'📁'}</span>
       <span class="fname" data-fid="${f.id}" onclick="event.stopPropagation();startInlineEditFolder('${f.id}',this)">${eh(f.name)}</span>
@@ -1081,6 +1089,7 @@ function renderPages(){
 }
 function pH(p,i){
   return `<div class="pitem ${i===ST.cur?'sel':''}" data-pidx="${i}">
+    <span class="drag-handle" title="드래그">⠿</span>
     <span style="font-size:11px;color:var(--txs);flex-shrink:0">📄</span>
     <span class="pname" data-pidx="${i}" onclick="event.stopPropagation();startInlineEditPage(${i},this)">${eh(p.name)}</span>
     <span class="pcnt">${p.hotspots.length}</span>
@@ -1309,69 +1318,54 @@ function initPageDnD(container){
     }
   }
 
-  // ── .fhdr 폴더 롱프레스 ──
+  // ── .fhdr 폴더 — 드래그 핸들에서만 롱프레스 ──
   container.querySelectorAll('.fhdr').forEach(hdr=>{
     const folderEl=hdr.closest('.folder');
     if(!folderEl)return;
     const fid=parseInt(folderEl.dataset.fid);
+    const handle=hdr.querySelector('.drag-handle');
+    if(!handle)return;
 
-    hdr.addEventListener('pointerdown',e=>{
-      // fdel(삭제), farr(토글) 클릭은 제외
-      if(e.target.closest('.fdel,.farr'))return;
-      // fname 영역은 탭=편집, 롱프레스=D&D 분리
+    handle.addEventListener('pointerdown',e=>{
       e.stopPropagation();
+      e.preventDefault();
       cancelLP();
       dragEl=folderEl; dragType='folder'; dragData=fid; isDragging=false;
       folderEl.classList.add('drag-ready');
-      longPressTimer=setTimeout(()=>{
-        // 롱프레스 확정 시 fname의 onclick(편집) 차단
-        startDrag();
-      }, 900);
+      longPressTimer=setTimeout(startDrag, 600);
     });
-    hdr.addEventListener('click',e=>{
-      // 롱프레스로 드래그된 경우 click 이벤트 차단
-      if(isDragging) e.stopImmediatePropagation();
+    handle.addEventListener('pointerup',()=>{
+      if(!isDragging){cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;}
     });
-    hdr.addEventListener('pointerup',e=>{
-      if(!isDragging){
-        cancelLP();
-        if(dragEl) dragEl.classList.remove('drag-ready');
-        dragEl=null;
-        // fname 탭 → 인라인 편집 (onclick 핸들러가 처리)
-      }
-    });
-    hdr.addEventListener('pointercancel',()=>{cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;});
-    hdr.addEventListener('contextmenu',e=>e.preventDefault());
+    handle.addEventListener('pointercancel',()=>{cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;});
+    handle.addEventListener('contextmenu',e=>e.preventDefault());
   });
 
-  // ── .pitem 페이지 롱프레스 ──
+  // ── .pitem 페이지 — 드래그 핸들에서만 롱프레스 ──
   container.querySelectorAll('.pitem').forEach(el=>{
     const pidx=parseInt(el.dataset.pidx);
+    const handle=el.querySelector('.drag-handle');
+    if(!handle)return;
 
-    el.addEventListener('pointerdown',e=>{
-      // pdel(삭제), pname(이름편집) 클릭은 D&D 제외
-      if(e.target.closest('.pedit,.pdel'))return;
+    handle.addEventListener('pointerdown',e=>{
       e.stopPropagation();
+      e.preventDefault();
       cancelLP();
       dragEl=el; dragType='page'; dragData=pidx; isDragging=false;
       el.classList.add('drag-ready');
-      longPressTimer=setTimeout(startDrag, 900);
+      longPressTimer=setTimeout(startDrag, 600);
     });
-    el.addEventListener('click',e=>{
-      if(isDragging) e.stopImmediatePropagation();
+    handle.addEventListener('pointerup',e=>{
+      if(!isDragging){cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;}
     });
+    handle.addEventListener('pointercancel',()=>{cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;});
+    handle.addEventListener('contextmenu',e=>e.preventDefault());
+
+    // 핸들 외 영역 탭 → 페이지 로드
     el.addEventListener('pointerup',e=>{
-      if(!isDragging){
-        cancelLP();
-        const savedData=dragData;
-        if(dragEl) dragEl.classList.remove('drag-ready');
-        dragEl=null;
-        // pname 탭은 onclick 핸들러가 처리, 나머지는 페이지 로드
-        if(!e.target.closest('.pname,.pdel')) loadPageC(parseInt(savedData));
-      }
+      if(e.target.closest('.drag-handle,.pname,.pdel'))return;
+      if(!isDragging) loadPageC(parseInt(el.dataset.pidx));
     });
-    el.addEventListener('pointercancel',()=>{cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;});
-    el.addEventListener('contextmenu',e=>e.preventDefault());
   });
 }
 function delPage(i){
