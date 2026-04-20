@@ -77,14 +77,14 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .fhdr:active{border-color:var(--am);}
 .fhdr .farr{cursor:pointer;}
 .fhdr 
-.fhdr:hover .fdel,.fhdr:active .fdel{opacity:1;}
+
 .farr{font-size:9px;color:var(--txs);transition:transform .2s;flex-shrink:0;}
 .farr.op{transform:rotate(90deg);}
 .fname{font-size:12px;font-weight:600;color:var(--am);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer;}
 .fcnt{font-size:9px;font-family:var(--mono);color:var(--txs);flex-shrink:0;}
 .fdel{width:24px;height:24px;border-radius:4px;color:var(--txs);font-size:15px;display:flex;align-items:center;
-  justify-content:center;flex-shrink:0;opacity:0;}
-.fhdr:hover .fdel,.fhdr:active .fdel{opacity:1;}
+  justify-content:center;flex-shrink:0;}
+
 .fdel:active{color:var(--rd);}
 .fpages{overflow:hidden;transition:max-height .22s ease;padding-left:10px;}
 .pitem{display:flex;align-items:center;gap:5px;padding:8px 9px;border-radius:var(--rs);border:1px solid transparent;
@@ -95,8 +95,8 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .pitem.sel .pname{color:var(--ac);}
 .pcnt{font-size:9px;font-family:var(--mono);color:var(--txs);flex-shrink:0;}
 .pdel,.fdel-btn{width:24px;height:24px;border-radius:4px;font-size:14px;display:flex;align-items:center;
-  justify-content:center;flex-shrink:0;opacity:0;color:var(--txs);}
-.pitem:hover .pdel,.pitem:active .pdel{opacity:1;}
+  justify-content:center;flex-shrink:0;color:var(--txs);}
+
 .pdel:active{color:var(--rd);}
 /* 인라인 이름 편집 */
 .inline-edit{background:transparent;border:none;border-bottom:1px solid var(--ac);color:var(--wh);
@@ -106,10 +106,8 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .drag-handle{
   font-size:13px;color:var(--txs);cursor:grab;flex-shrink:0;
   padding:0 4px;touch-action:none;user-select:none;-webkit-user-select:none;
-  opacity:0;transition:opacity .15s;
 }
-.fhdr:hover .drag-handle,.fhdr:active .drag-handle,
-.pitem:hover .drag-handle,.pitem:active .drag-handle{opacity:1;}
+
 /* 폴더/페이지 D&D */
 .folder{touch-action:none;user-select:none;-webkit-user-select:none;}
 .pitem{touch-action:none;user-select:none;-webkit-user-select:none;}
