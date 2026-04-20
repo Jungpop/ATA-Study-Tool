@@ -544,11 +544,11 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(88,166,255
 <div id="shell">
 <header id="hdr">
   <button id="menuBtn" onclick="togglePanel('L')">☰</button>
+  <button class="stgl" id="btnTL" onclick="toggleSideL()" title="페이지 패널">📁</button>
   <div class="logo">
     <div><div class="logo-t">Study Tool</div></div>
   </div>
   <div id="hdr-r">
-    <button class="stgl" id="btnTL" onclick="toggleSideL()" title="페이지 패널">📁</button>
     <button class="hb" onclick="exportData()">💾 내보내기</button>
     <button class="hb" onclick="importData()">📂 불러오기</button>
     <button class="hb danger" onclick="resetAll()">🗑 전체 삭제</button>
