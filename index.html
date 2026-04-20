@@ -58,11 +58,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 
 /* ── SIDEBARS — absolute overlay, canvas never moves ── */
 #sideL{background:var(--s1);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;
-  position:absolute;left:0;top:0;bottom:0;width:var(--SL);z-index:80;
+  position:absolute;left:0;top:0;bottom:0;width:var(--SL);z-index:100;
   transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;}
 #sideL.col{transform:translateX(-100%);opacity:0;pointer-events:none;}
 #sideR{background:var(--s1);border-left:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;
-  position:absolute;right:0;top:0;bottom:0;width:var(--SR);z-index:80;
+  position:absolute;right:0;top:0;bottom:0;width:var(--SR);z-index:100;
   transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;}
 #sideR.col{transform:translateX(100%);opacity:0;pointer-events:none;}
 .side-hdr{padding:10px 14px;font-size:11px;font-family:var(--mono);color:var(--txm);letter-spacing:1px;
@@ -213,9 +213,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 /* 선택된 이미지 하이라이트 */
 .ci.img-selected{outline:2px solid var(--ac);outline-offset:1px;}
 .ci.img-selected .ci-rh{display:block;}
-/* add-hs 모드: 이미지 위 커서를 십자로 */
-#cv.m-add-hs .ci{cursor:crosshair;pointer-events:all;}
+/* add-hs 모드: 이미지는 배경으로 — 클릭 통과, 커서만 십자로 */
+#cv.m-add-hs .ci{cursor:crosshair;pointer-events:none;}
 #cv.m-add-hs .ci-rh{display:none;}
+/* add-hs 모드: cv 자체가 클릭 수신 */
+#cv.m-add-hs{pointer-events:all;cursor:crosshair;}
 /* 나머지 모드: 이미지는 배경 — 클릭 통과 */
 #cv.m-view .ci,
 #cv.m-draw .ci,
@@ -847,19 +849,6 @@ function trashShow(ghostEl){
   const dcb=$('drawCtrlBar'), tbb=$('tbBtns');
   if(dcb) dcb.style.display='none';
   if(tbb) tbb.style.display='none';
-  // ghost 설정
-  if(ghostEl){
-    const g=$('trashGhost');
-    const r=ghostEl.getBoundingClientRect();
-    g.style.width=Math.min(120,r.width)+'px';
-    g.style.height=Math.min(80,r.height)+'px';
-    g.style.left=r.left+'px';
-    g.style.top=r.top+'px';
-    // 배경 이미지나 텍스트 복사
-    g.style.background=getComputedStyle(ghostEl).background||'var(--s2)';
-    g.innerHTML=ghostEl.innerHTML||'';
-    g.classList.add('show');
-  }
 }
 function trashHide(){
   $('tb').classList.remove('trash-zone','trash-zone-over');
@@ -869,43 +858,35 @@ function trashHide(){
     if(mode==='draw'){dcb.style.display='flex';tbb.style.display='none';}
     else{dcb.style.display='none';tbb.style.display='flex';}
   }
-  const g=$('trashGhost');
-  g.style.transition='opacity .2s,transform .2s';
-  g.classList.remove('show');
-  g.style.transform='scale(0.85)';
-  g.style.opacity='0';
-  setTimeout(()=>{g.innerHTML='';g.style.transform='';g.style.transition='';},220);
 }
 function trashIsOver(clientX, clientY){
   const r=$('tb').getBoundingClientRect();
   return clientX>=r.left&&clientX<=r.right&&clientY>=r.top&&clientY<=r.bottom;
 }
-function trashUpdateOver(clientX, clientY){
+// 드래그 중인 엘리먼트를 직접 툴바 중앙으로 빨아들이거나 포인터로 복귀
+function trashUpdateOver(clientX, clientY, dragEl, nx, ny){
   const over=trashIsOver(clientX,clientY);
   $('tb').classList.toggle('trash-zone-over',over);
   $('trashZoneInner').classList.toggle('over',over);
-  // ghost 이동 — 포인터 따라 부드럽게
-  const g=$('trashGhost');
-  if(g.classList.contains('show')){
-    const gw=parseInt(g.style.width)||60;
-    const gh=parseInt(g.style.height)||40;
-    if(over){
-      // 휴지통 영역 위: 툴바 중앙으로 끌어당김
-      const tbR=$('tb').getBoundingClientRect();
-      const tx=tbR.left+tbR.width/2-gw/2;
-      const ty=tbR.top+tbR.height/2-gh/2;
-      g.style.transition='left .15s,top .15s,transform .15s,opacity .15s';
-      g.style.left=tx+'px';
-      g.style.top=ty+'px';
-      g.style.transform='scale(0.7)';
-      g.style.opacity='0.5';
-    } else {
-      g.style.transition='left .05s,top .05s';
-      g.style.transform='scale(1)';
-      g.style.opacity='0.75';
-      g.style.left=(clientX-gw/2)+'px';
-      g.style.top=(clientY-gh/2)+'px';
-    }
+  if(!dragEl)return;
+  if(over){
+    const tbR=$('tb').getBoundingClientRect();
+    const cvR=CV().getBoundingClientRect();
+    const tx=tbR.left+tbR.width/2-cvR.left;
+    const ty=tbR.top+tbR.height/2-cvR.top;
+    dragEl.style.transition='left .18s cubic-bezier(.4,0,.2,1),top .18s cubic-bezier(.4,0,.2,1),transform .18s,opacity .18s';
+    dragEl.style.left=tx+'px';
+    dragEl.style.top=ty+'px';
+    // hs는 translate(-50%,-50%) 이미 적용 중이므로 scale만 추가
+    const baseTransform=dragEl.classList.contains('hs')?'translate(-50%,-50%)':'';
+    dragEl.style.transform=baseTransform+' scale(0.5)';
+    dragEl.style.opacity='0.45';
+  } else {
+    dragEl.style.transition='';
+    dragEl.style.transform='';
+    dragEl.style.opacity='';
+    if(nx!==undefined) dragEl.style.left=nx+'px';
+    if(ny!==undefined) dragEl.style.top=ny+'px';
   }
 }
 
@@ -1514,6 +1495,7 @@ function renderImgs(page){
       document.body.style.webkitUserSelect='';
     }
     wrap.addEventListener('pointerdown',e=>{
+      if(mode==='add-hs')return; // add-hs 모드: 이미지 선택 완전 차단
       if(mode!=='edit')return;
       if(e.target===rh)return;
       e.stopPropagation();e.preventDefault();
@@ -1534,7 +1516,7 @@ function renderImgs(page){
           wrap.setPointerCapture(mvStart.pid);
           CV().querySelectorAll('.ci').forEach(c=>c.style.outline='');
           wrap.style.outline='2px solid var(--ac)';
-          trashShow();
+          trashShow(wrap);
         },500);
       }
     });
@@ -1547,17 +1529,17 @@ function renderImgs(page){
           wrap.setPointerCapture(mvStart.pid);
           CV().querySelectorAll('.ci').forEach(c=>c.style.outline='');
           wrap.style.outline='2px solid var(--ac)';
-          trashShow();
+          trashShow(wrap);
         }
       }
       if(!mvDragging)return;
       const p2=cvPt(e.clientX,e.clientY);
       const nx=Math.max(0,Math.min(cvW()-20,p2.x-mvStart.ox));
       const ny=Math.max(0,Math.min(cvH()-20,p2.y-mvStart.oy));
-      wrap.style.left=nx+'px';wrap.style.top=ny+'px';
       const over=trashIsOver(e.clientX,e.clientY);
       wrap.classList.toggle('dragging-to-trash',over);
-      trashUpdateOver(e.clientX,e.clientY);
+      trashUpdateOver(e.clientX,e.clientY,wrap,nx,ny);
+      if(!over){wrap.style.left=nx+'px';wrap.style.top=ny+'px';}
       const _tp=ST.pages[ST.cur];
       if(_tp){
         const _im=_tp.images.find(x=>x.id===im.id);
@@ -1573,6 +1555,7 @@ function renderImgs(page){
       const wasDragging=mvDragging;
       const overTrash=trashIsOver(e.clientX,e.clientY);
       mvReset();
+      wrap.style.transition='';wrap.style.transform='';wrap.style.opacity='';
       if(!wasDragging){
         // 클릭 → 이미지 선택 (이미 선택된 이미지면 그대로 유지)
         selectImg(im.id);
@@ -1719,6 +1702,10 @@ function renderHS(page){
       rhDragging=false;
       el.classList.remove('hs-rh-dragging','hs-resizing');
       hs.size=curSz;save();
+      e.stopPropagation();
+      // resize 완료 후 click 이벤트 전파 차단
+      const absorb=ev=>{ev.stopPropagation();ev.preventDefault();};
+      el.addEventListener('click',absorb,{once:true,capture:true});
     });
     rh.addEventListener('pointercancel',()=>{
       rhDragging=false;
@@ -1782,7 +1769,7 @@ function renderHS(page){
             hsOrigX=hs.x; hsOrigY=hs.y; hsOrigRx=hs.rx; hsOrigRy=hs.ry; hsOrigImgId=hs.imgId;
             try{el.setPointerCapture(pdStart.pid);}catch(err){}
             el.classList.add('hs-ready');
-            trashShow();
+            trashShow(el);
             setTimeout(()=>{
               if(state!=='move')return;
               el.classList.remove('hs-ready');
@@ -1814,7 +1801,7 @@ function renderHS(page){
           hsOrigX=hs.x; hsOrigY=hs.y; hsOrigRx=hs.rx; hsOrigRy=hs.ry; hsOrigImgId=hs.imgId;
           try{el.setPointerCapture(pdStart.pid);}catch(err){}
           el.classList.add('hs-dragging');
-          trashShow();
+          trashShow(el);
         } else if(!pdStart.isMouse&&dist>14){
           // 터치/펜: 빠른 스와이프 → 크기 변경 (롱프레스 타이머 취소)
           clearTimeout(lpMove);clearTimeout(lpDelete);
@@ -1832,15 +1819,14 @@ function renderHS(page){
       } else if(state==='move'){
         e.preventDefault();
         const pt=cvPt(e.clientX,e.clientY);
-        // transform:translate(-50%,-50%) 덕분에 포인터 위치 = style.left/top 그대로 사용
         let nx=pt.x;
         let ny=pt.y;
         nx=Math.max(-curSz/2, Math.min(cvW()-curSz/2, nx));
         ny=Math.max(-curSz/2, Math.min(cvH()-curSz/2, ny));
-        el.style.left=nx+'px'; el.style.top=ny+'px';
         const over=trashIsOver(e.clientX,e.clientY);
         el.classList.toggle('dragging-to-trash',over);
-        trashUpdateOver(e.clientX,e.clientY);
+        trashUpdateOver(e.clientX,e.clientY,el,nx,ny);
+        if(!over){el.style.left=nx+'px';el.style.top=ny+'px';}
       }
     },{passive:false});
 
@@ -1850,6 +1836,7 @@ function renderHS(page){
       resetState();
       trashHide();
       el.classList.remove('dragging-to-trash');
+      el.style.transition='';el.style.transform='';el.style.opacity='';
       setTimeout(()=>{blockCvClick=false;},50);
 
       if(endState==='resize'){
@@ -2052,7 +2039,7 @@ function makeTBEl(tb,W,H){
         wrap.classList.remove('tb-ready');
         wrap.classList.add('tb-dragging');
         try{wrap.setPointerCapture(e.pointerId);}catch(err){}
-        trashShow();
+        trashShow(wrap);
       },500);
     }
   });
@@ -2068,7 +2055,7 @@ function makeTBEl(tb,W,H){
         wrap.classList.remove('tb-ready');
         wrap.classList.add('tb-dragging');
         try{wrap.setPointerCapture(e.pointerId);}catch(err){}
-        trashShow();
+        trashShow(wrap);
       }
     }
     if(!isDragging)return;
@@ -2076,11 +2063,10 @@ function makeTBEl(tb,W,H){
     const p2=cvPt(e.clientX,e.clientY);
     const nx=Math.max(0, Math.min(cvW()-wrap.offsetWidth,  p2.x-mvStart.ox));
     const ny=Math.max(0, Math.min(cvH()-wrap.offsetHeight, p2.y-mvStart.oy));
-    wrap.style.left=nx+'px';
-    wrap.style.top =ny+'px';
     const over=trashIsOver(e.clientX,e.clientY);
     wrap.classList.toggle('dragging-to-trash',over);
-    trashUpdateOver(e.clientX,e.clientY);
+    trashUpdateOver(e.clientX,e.clientY,wrap,nx,ny);
+    if(!over){wrap.style.left=nx+'px';wrap.style.top=ny+'px';}
   },{passive:false});
 
   wrap.addEventListener('pointerup',e=>{
@@ -2091,6 +2077,7 @@ function makeTBEl(tb,W,H){
     resetDrag();
     trashHide();
     wrap.classList.remove('dragging-to-trash');
+    wrap.style.transition='';wrap.style.transform='';wrap.style.opacity='';
     document.body.style.userSelect='';
     document.body.style.webkitUserSelect='';
     if(!wasDragging)return;
