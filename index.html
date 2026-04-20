@@ -336,7 +336,50 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #cv.m-add-hs .tb{pointer-events:none;}
 #cv.m-add-tb .tb{pointer-events:none;}
 
-/* ── TOOLBAR ── */
+/* ── 드롭 위치 인디케이터 ── */
+.drop-indicator{
+  position:relative;height:0;margin:0;
+  pointer-events:none;overflow:visible;
+}
+.drop-indicator::before{
+  content:'';position:absolute;left:4px;right:4px;top:-1.5px;
+  height:3px;background:var(--ac);border-radius:3px;
+  box-shadow:0 0 6px rgba(14,165,233,.6);
+}
+/* 폴더 into 강조 */
+.fhdr.drag-over-into{
+  background:rgba(14,165,233,.15)!important;
+  outline:2px dashed var(--ac)!important;
+  border-radius:var(--r);
+}
+/* 드래그 중 요소 */
+.folder.dragging,.pitem.dragging,.hsc.dragging{
+  opacity:.35;background:var(--s3);
+}
+.folder.drag-ready .fhdr,.pitem.drag-ready,.hsc.drag-ready{
+  border-color:rgba(14,165,233,.5)!important;
+  animation:lp-pulse .9s ease-out;
+}
+
+/* ── 휴지통 floating ghost ── */
+#trashGhost{
+  position:fixed;pointer-events:none;z-index:9999;
+  opacity:0;transform:scale(0.85);
+  transition:opacity .15s, transform .15s;
+  border-radius:var(--r);overflow:hidden;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+  outline:2px solid var(--rd);
+  max-width:120px;max-height:80px;
+}
+#trashGhost.show{opacity:.75;transform:scale(1);}
+/* 휴지통 아이콘 강조 */
+#trashZoneInner.over{
+  animation:trash-pulse .4s ease-out infinite alternate;
+}
+@keyframes trash-pulse{
+  from{color:var(--rd);transform:scale(1);}
+  to{color:#ff8080;transform:scale(1.08);}
+}
 /* 휴지통 존 전환 */
 #tb.trash-zone{background:rgba(239,68,68,.12)!important;border-top-color:rgba(239,68,68,.4)!important;transition:background .2s,border-top-color .2s;}
 #tb.trash-zone-over{background:rgba(239,68,68,.28)!important;border-top-color:var(--rd)!important;}
@@ -557,7 +600,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
 
   <!-- CENTER -->
   <div id="center">
-    <div id="cwBlur"></div>
+    <div id="cwBlur" onclick="closeSidePanels()"></div>
     <div id="canvasArea">
       <!-- 고정 캔버스 컨테이너 -->
       <div id="cv" class="m-edit">
@@ -643,6 +686,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
 </nav>
 </div><!-- /shell -->
 
+<div id="trashGhost"></div>
 <div id="toast"></div>
 
 <!-- 생성 확인 다이얼로그 -->
@@ -793,30 +837,53 @@ function cvPt(clientX, clientY) {
 function eh(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 // ── 휴지통 존 공통 유틸 ──────────────────────
-function trashShow(){
+// trashShow/Hide/IsOver/UpdateOver → 위에서 정의됨
+function trashShow(ghostEl){
   $('tb').classList.add('trash-zone');
   $('trashZoneInner').classList.add('show');
-  // 새 구조: tbBtns / drawCtrlBar 숨기기
   const dcb=$('drawCtrlBar'), tbb=$('tbBtns');
   if(dcb) dcb.style.display='none';
   if(tbb) tbb.style.display='none';
+  // ghost 설정
+  if(ghostEl){
+    const g=$('trashGhost');
+    const r=ghostEl.getBoundingClientRect();
+    g.style.width=Math.min(120,r.width)+'px';
+    g.style.height=Math.min(80,r.height)+'px';
+    g.style.left=r.left+'px';
+    g.style.top=r.top+'px';
+    // 배경 이미지나 텍스트 복사
+    g.style.background=getComputedStyle(ghostEl).background||'var(--s2)';
+    g.innerHTML=ghostEl.innerHTML||'';
+    g.classList.add('show');
+  }
 }
 function trashHide(){
   $('tb').classList.remove('trash-zone','trash-zone-over');
-  $('trashZoneInner').classList.remove('show');
-  // draw 모드면 drawCtrlBar 복원, 아니면 tbBtns 복원
+  $('trashZoneInner').classList.remove('show','over');
   const dcb=$('drawCtrlBar'), tbb=$('tbBtns');
   if(dcb&&tbb){
     if(mode==='draw'){dcb.style.display='flex';tbb.style.display='none';}
     else{dcb.style.display='none';tbb.style.display='flex';}
   }
+  const g=$('trashGhost');
+  g.classList.remove('show');
+  g.innerHTML='';
 }
 function trashIsOver(clientX, clientY){
   const r=$('tb').getBoundingClientRect();
   return clientX>=r.left&&clientX<=r.right&&clientY>=r.top&&clientY<=r.bottom;
 }
 function trashUpdateOver(clientX, clientY){
-  $('tb').classList.toggle('trash-zone-over', trashIsOver(clientX, clientY));
+  const over=trashIsOver(clientX,clientY);
+  $('tb').classList.toggle('trash-zone-over',over);
+  $('trashZoneInner').classList.toggle('over',over);
+  // ghost 이동
+  const g=$('trashGhost');
+  if(g.classList.contains('show')){
+    g.style.left=(clientX-parseInt(g.style.width)/2)+'px';
+    g.style.top=(clientY-parseInt(g.style.height)/2)+'px';
+  }
 }
 
 // ── 생성 확인 다이얼로그 ──────────────────────
@@ -948,6 +1015,13 @@ function togglePanel(side){
   }
 }
 function closeAllPanels(){['panelL','panelR'].forEach(id=>$(id).classList.remove('open'));$('overlay').classList.remove('on');}
+function closeSidePanels(){
+  // cwBlur 클릭 → 양쪽 사이드바 닫기
+  if(sL){sL=false;$('sideL').classList.add('col');$('main').classList.add('hL');$('btnTL').classList.remove('on');}
+  if(sR){sR=false;$('sideR').classList.add('col');$('main').classList.add('hR');$('btnTR').classList.remove('on');}
+  $('cwBlur').classList.remove('on');
+  setTimeout(refreshPage,300);
+}
 
 // ── 페이지 목록 ──────────────────────────────
 // 폴더 트리를 재귀로 렌더링. depth=0이 루트.
@@ -1019,7 +1093,7 @@ function loadPageC(i){closeAllPanels();loadPage(i);}
 function makeInlineInput(cur, onCommit, onCancel){
   const inp=document.createElement('input');
   inp.className='inline-edit';inp.value=cur;
-  inp.readOnly=true;  // ← 핵심: DOM 삽입 전 readOnly
+  inp.setAttribute('inputmode','text');
   let committed=false;
   function commit(){
     if(committed)return;committed=true;
@@ -1037,12 +1111,8 @@ function makeInlineInput(cur, onCommit, onCancel){
   return inp;
 }
 function focusInlineInput(inp){
-  inp.focus();
-  // readOnly 해제는 다음 rAF — focus로 스크롤 고정 후 편집 활성화
-  requestAnimationFrame(()=>{
-    inp.readOnly=false;
-    inp.select();
-  });
+  // readOnly 없이 바로 focus → iOS 키보드 정상 올라옴
+  requestAnimationFrame(()=>{ inp.focus(); inp.select(); });
 }
 function startInlineEditPage(idx, spanEl){
   if(spanEl.querySelector('input'))return;
@@ -1091,6 +1161,16 @@ function initPageDnD(container){
     container.querySelectorAll('.fhdr,.pitem').forEach(el=>
       el.classList.remove('drag-over-top','drag-over-bot','drag-over-into')
     );
+    // 드롭 인디케이터 제거
+    container.querySelectorAll('.drop-indicator').forEach(e=>e.remove());
+  }
+
+  function showDropIndicator(refEl, above){
+    clearHighlights();
+    const ind=document.createElement('div');
+    ind.className='drop-indicator';
+    if(above) refEl.parentNode.insertBefore(ind, refEl);
+    else refEl.parentNode.insertBefore(ind, refEl.nextSibling);
   }
 
   function resetState(){
@@ -1144,9 +1224,11 @@ function initPageDnD(container){
     if(!t)return;
     const isFhdr=t.el.classList.contains('fhdr');
     if(isFhdr&&t.dist<18){
+      // 폴더 안으로 편입 표시
       t.el.classList.add('drag-over-into');
     }else{
-      t.el.classList.add(t.above?'drag-over-top':'drag-over-bot');
+      // 두 요소 사이 라인 인디케이터
+      showDropIndicator(t.el, t.above);
     }
   },{passive:false});
 
@@ -1792,11 +1874,9 @@ function makeTBEl(tb,W,H){
   }
   function enterEdit(){
     wrap.classList.remove('done');
-    ta.readOnly=true; // focus 전 readOnly → iOS 밀림 방지
-    ta.focus();       // focus 이벤트에서 rAF로 readOnly 해제
-    // 커서를 텍스트 끝으로
+    ta.readOnly=false; // 먼저 해제 → iOS 키보드 올라옴
     requestAnimationFrame(()=>{
-      ta.readOnly=false;
+      ta.focus();
       ta.selectionStart=ta.selectionEnd=ta.value.length;
     });
   }
@@ -2490,21 +2570,33 @@ function initHSDnD(container){
     item.addEventListener('pointermove',e=>{
       if(!isDragging||!dragEl)return;
       e.preventDefault();
+      // 기존 인디케이터 제거
+      container.querySelectorAll('.drop-indicator').forEach(x=>x.remove());
+      container.querySelectorAll('.hsc').forEach(el=>el.classList.remove('drag-over'));
       const els=Array.from(container.querySelectorAll('.hsc:not(.dragging)'));
-      let closest=null,closestDist=Infinity;
+      let closest=null,closestDist=Infinity,closestAbove=true;
       els.forEach(el=>{
         const box=el.getBoundingClientRect();
-        const dist=Math.abs(e.clientY-(box.top+box.height/2));
-        if(dist<closestDist){closestDist=dist;closest=el;}
+        const mid=box.top+box.height/2;
+        const dist=Math.abs(e.clientY-mid);
+        if(dist<closestDist){closestDist=dist;closest=el;closestAbove=e.clientY<mid;}
       });
-      container.querySelectorAll('.hsc').forEach(el=>el.classList.remove('drag-over'));
-      if(closest)closest.classList.add('drag-over');
+      if(closest){
+        const ind=document.createElement('div');
+        ind.className='drop-indicator';
+        if(closestAbove) closest.parentNode.insertBefore(ind,closest);
+        else closest.parentNode.insertBefore(ind,closest.nextSibling);
+        closest.dataset.dropAbove=closestAbove?'1':'0';
+        closest.classList.add('drag-over');
+      }
     });
 
     item.addEventListener('pointerup',e=>{
       cancelLongPress();
       const wasDragging=isDragging;
       const savedId=dragId;
+      // 인디케이터 제거
+      container.querySelectorAll('.drop-indicator').forEach(x=>x.remove());
       if(wasDragging){
         const overEl=container.querySelector('.hsc.drag-over');
         if(overEl&&overEl!==dragEl){
@@ -2512,9 +2604,8 @@ function initHSDnD(container){
           if(p){
             const fromIdx=p.hotspots.findIndex(h=>h.id===savedId);
             const toId=parseInt(overEl.dataset.hsid);
+            const insertBefore=overEl.dataset.dropAbove==='1';
             if(fromIdx!==-1){
-              const box=overEl.getBoundingClientRect();
-              const insertBefore=e.clientY<box.top+box.height/2;
               const[moved]=p.hotspots.splice(fromIdx,1);
               const newIdx=p.hotspots.findIndex(h=>h.id===toId);
               p.hotspots.splice(insertBefore?newIdx:newIdx+1,0,moved);
