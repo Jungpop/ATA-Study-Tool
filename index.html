@@ -602,7 +602,7 @@ textarea.fin:focus,input.fin:focus,select.fin:focus{border-color:rgba(14,165,233
 
   <!-- CENTER -->
   <div id="center">
-    <div id="cwBlur" onclick="closeSidePanels()"></div>
+    <div id="cwBlur"></div>
     <div id="canvasArea">
       <!-- 고정 캔버스 컨테이너 -->
       <div id="cv" class="m-edit">
@@ -996,6 +996,7 @@ function toggleSideL(){
   $('main').classList.toggle('hL',!sL);
   $('btnTL').classList.toggle('on',sL);
   $('cwBlur').classList.toggle('on',sL||sR);
+  if(sL||sR) $('cwBlur').addEventListener('pointerdown',closeSidePanels,{once:true});
   setTimeout(refreshPage,300);
 }
 function toggleSideR(){
@@ -1004,6 +1005,7 @@ function toggleSideR(){
   $('main').classList.toggle('hR',!sR);
   $('btnTR').classList.toggle('on',sR);
   $('cwBlur').classList.toggle('on',sL||sR);
+  if(sL||sR) $('cwBlur').addEventListener('pointerdown',closeSidePanels,{once:true});
   setTimeout(refreshPage,300);
 }
 function togglePanel(side){
@@ -1018,7 +1020,6 @@ function togglePanel(side){
 }
 function closeAllPanels(){['panelL','panelR'].forEach(id=>$(id).classList.remove('open'));$('overlay').classList.remove('on');}
 function closeSidePanels(){
-  // cwBlur 클릭 → 양쪽 사이드바 닫기
   if(sL){sL=false;$('sideL').classList.add('col');$('main').classList.add('hL');$('btnTL').classList.remove('on');}
   if(sR){sR=false;$('sideR').classList.add('col');$('main').classList.add('hR');$('btnTR').classList.remove('on');}
   $('cwBlur').classList.remove('on');
@@ -1097,14 +1098,34 @@ function makeInlineInput(cur, onCommit, onCancel){
   inp.className='inline-edit';inp.value=cur;
   inp.setAttribute('inputmode','text');
   let committed=false;
+
   function commit(){
     if(committed)return;committed=true;
+    cleanup();
     const v=inp.value.trim()||cur;
     onCommit(v);
   }
+  function cancel(){
+    if(committed)return;committed=true;
+    cleanup();
+    onCancel();
+  }
+  // 외부 탭 시 강제 blur — 단 사이드바 내부 클릭은 무시 (패널 내 다른 항목 탭 시 충돌 방지)
+  function onOutsideTap(e){
+    if(inp.contains(e.target))return;
+    // 같은 사이드바 패널 안을 클릭한 경우 무시 (다른 이름 탭, 폴더 탭 등)
+    const panel=inp.closest('#sideL,#sideR,#panelL,#panelR');
+    if(panel&&panel.contains(e.target))return;
+    commit();
+  }
+  function cleanup(){
+    document.removeEventListener('pointerdown',onOutsideTap,true);
+  }
+  document.addEventListener('pointerdown',onOutsideTap,true);
+
   inp.addEventListener('keydown',e=>{
     if(e.key==='Enter'){e.preventDefault();commit();}
-    if(e.key==='Escape'){committed=true;onCancel();}
+    if(e.key==='Escape'){cancel();}
     e.stopPropagation();
   });
   inp.addEventListener('blur',commit);
@@ -1113,8 +1134,8 @@ function makeInlineInput(cur, onCommit, onCancel){
   return inp;
 }
 function focusInlineInput(inp){
-  // readOnly 없이 바로 focus → iOS 키보드 정상 올라옴
-  requestAnimationFrame(()=>{ inp.focus(); inp.select(); });
+  inp.focus();
+  inp.select();
 }
 function startInlineEditPage(idx, spanEl){
   if(spanEl.querySelector('input'))return;
@@ -1294,19 +1315,30 @@ function initPageDnD(container){
     if(!folderEl)return;
     const fid=parseInt(folderEl.dataset.fid);
 
-    // fhdr 안의 모든 자식에 touch-action:none 강제 적용
-    hdr.querySelectorAll('*').forEach(ch=>ch.style.touchAction='none');
-
     hdr.addEventListener('pointerdown',e=>{
-      if(e.target.closest('.fdel,.fname,.farr'))return;
+      // fdel(삭제), farr(토글) 클릭은 제외
+      if(e.target.closest('.fdel,.farr'))return;
+      // fname 영역은 탭=편집, 롱프레스=D&D 분리
       e.stopPropagation();
       cancelLP();
       dragEl=folderEl; dragType='folder'; dragData=fid; isDragging=false;
       folderEl.classList.add('drag-ready');
-      longPressTimer=setTimeout(startDrag, 900);
+      longPressTimer=setTimeout(()=>{
+        // 롱프레스 확정 시 fname의 onclick(편집) 차단
+        startDrag();
+      }, 900);
+    });
+    hdr.addEventListener('click',e=>{
+      // 롱프레스로 드래그된 경우 click 이벤트 차단
+      if(isDragging) e.stopImmediatePropagation();
     });
     hdr.addEventListener('pointerup',e=>{
-      if(!isDragging){cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;}
+      if(!isDragging){
+        cancelLP();
+        if(dragEl) dragEl.classList.remove('drag-ready');
+        dragEl=null;
+        // fname 탭 → 인라인 편집 (onclick 핸들러가 처리)
+      }
     });
     hdr.addEventListener('pointercancel',()=>{cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;});
     hdr.addEventListener('contextmenu',e=>e.preventDefault());
@@ -1315,23 +1347,27 @@ function initPageDnD(container){
   // ── .pitem 페이지 롱프레스 ──
   container.querySelectorAll('.pitem').forEach(el=>{
     const pidx=parseInt(el.dataset.pidx);
-    el.querySelectorAll('*').forEach(ch=>ch.style.touchAction='none');
 
     el.addEventListener('pointerdown',e=>{
-      if(e.target.closest('.pedit,.pdel,.pname'))return;
+      // pdel(삭제), pname(이름편집) 클릭은 D&D 제외
+      if(e.target.closest('.pedit,.pdel'))return;
       e.stopPropagation();
       cancelLP();
       dragEl=el; dragType='page'; dragData=pidx; isDragging=false;
       el.classList.add('drag-ready');
       longPressTimer=setTimeout(startDrag, 900);
     });
+    el.addEventListener('click',e=>{
+      if(isDragging) e.stopImmediatePropagation();
+    });
     el.addEventListener('pointerup',e=>{
       if(!isDragging){
         cancelLP();
         const savedData=dragData;
-        if(dragEl)dragEl.classList.remove('drag-ready');
+        if(dragEl) dragEl.classList.remove('drag-ready');
         dragEl=null;
-        if(!e.target.closest('.pname')) loadPageC(parseInt(savedData));
+        // pname 탭은 onclick 핸들러가 처리, 나머지는 페이지 로드
+        if(!e.target.closest('.pname,.pdel')) loadPageC(parseInt(savedData));
       }
     });
     el.addEventListener('pointercancel',()=>{cancelLP();if(dragEl)dragEl.classList.remove('drag-ready');dragEl=null;});
