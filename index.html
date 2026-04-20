@@ -53,17 +53,16 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
   color:var(--txm);font-size:18px;background:var(--s2);align-items:center;justify-content:center;}
 
 /* ── MAIN GRID ── */
-#main{flex:1;display:grid;grid-template-columns:var(--SL) 1fr var(--SR);overflow:hidden;min-height:0;
-  transition:grid-template-columns .28s cubic-bezier(.4,0,.2,1);}
-#main.hL{grid-template-columns:0 1fr var(--SR);}
-#main.hR{grid-template-columns:var(--SL) 1fr 0;}
-#main.hL.hR{grid-template-columns:0 1fr 0;}
+#main{flex:1;display:grid;grid-template-columns:1fr;overflow:hidden;min-height:0;position:relative;}
+#main.hL{}#main.hR{}#main.hL.hR{}
 
-/* ── SIDEBARS ── */
+/* ── SIDEBARS — absolute overlay, canvas never moves ── */
 #sideL{background:var(--s1);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;
+  position:absolute;left:0;top:0;bottom:0;width:var(--SL);z-index:80;
   transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;}
 #sideL.col{transform:translateX(-100%);opacity:0;pointer-events:none;}
 #sideR{background:var(--s1);border-left:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;
+  position:absolute;right:0;top:0;bottom:0;width:var(--SR);z-index:80;
   transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;}
 #sideR.col{transform:translateX(100%);opacity:0;pointer-events:none;}
 .side-hdr{padding:10px 14px;font-size:11px;font-family:var(--mono);color:var(--txm);letter-spacing:1px;
@@ -299,9 +298,23 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .hs.hs-dragging{opacity:.75;z-index:199!important;}
 .hs.hs-dragging .hs-badge{box-shadow:0 6px 20px rgba(88,166,255,.6);transform:scale(1.15);}
 .hs.hs-delwarn .hs-badge{animation:hs-del-pulse .6s ease-out infinite;background:var(--rd);}
+/* PC resize handle */
+.hs-rh{
+  position:absolute;bottom:-5px;right:-5px;
+  width:13px;height:13px;border-radius:50%;
+  background:var(--gr);border:2px solid var(--bg);
+  cursor:nwse-resize;z-index:10;
+  opacity:0;transition:opacity .15s;
+  touch-action:none;pointer-events:all;
+}
+#cv.m-edit .hs:hover .hs-rh{opacity:1;}
+#cv.m-edit .hs.hs-rh-dragging .hs-rh{opacity:1;}
 
 /* 텍스트박스 — 필기 위 최상단 */
 .tb{position:absolute;z-index:300;min-width:60px;}
+/* 블러 활성 시 텍스트박스를 블러 아래로 */
+#cwBlur.on~* .tb, .cwBlur-on .tb{z-index:50;}
+#cv.blur-below .tb{z-index:50;}
 .tb textarea{display:block;width:100%;min-height:34px;background:rgba(22,27,34,.88);
   border:1.5px solid rgba(63,185,80,.55);border-radius:5px;color:#e6edf3;font-size:14px;
   font-family:var(--sans);padding:7px 9px;resize:none;outline:none;line-height:1.6;
@@ -857,8 +870,11 @@ function trashHide(){
     else{dcb.style.display='none';tbb.style.display='flex';}
   }
   const g=$('trashGhost');
+  g.style.transition='opacity .2s,transform .2s';
   g.classList.remove('show');
-  g.innerHTML='';
+  g.style.transform='scale(0.85)';
+  g.style.opacity='0';
+  setTimeout(()=>{g.innerHTML='';g.style.transform='';g.style.transition='';},220);
 }
 function trashIsOver(clientX, clientY){
   const r=$('tb').getBoundingClientRect();
@@ -868,11 +884,28 @@ function trashUpdateOver(clientX, clientY){
   const over=trashIsOver(clientX,clientY);
   $('tb').classList.toggle('trash-zone-over',over);
   $('trashZoneInner').classList.toggle('over',over);
-  // ghost 이동
+  // ghost 이동 — 포인터 따라 부드럽게
   const g=$('trashGhost');
   if(g.classList.contains('show')){
-    g.style.left=(clientX-parseInt(g.style.width)/2)+'px';
-    g.style.top=(clientY-parseInt(g.style.height)/2)+'px';
+    const gw=parseInt(g.style.width)||60;
+    const gh=parseInt(g.style.height)||40;
+    if(over){
+      // 휴지통 영역 위: 툴바 중앙으로 끌어당김
+      const tbR=$('tb').getBoundingClientRect();
+      const tx=tbR.left+tbR.width/2-gw/2;
+      const ty=tbR.top+tbR.height/2-gh/2;
+      g.style.transition='left .15s,top .15s,transform .15s,opacity .15s';
+      g.style.left=tx+'px';
+      g.style.top=ty+'px';
+      g.style.transform='scale(0.7)';
+      g.style.opacity='0.5';
+    } else {
+      g.style.transition='left .05s,top .05s';
+      g.style.transform='scale(1)';
+      g.style.opacity='0.75';
+      g.style.left=(clientX-gw/2)+'px';
+      g.style.top=(clientY-gh/2)+'px';
+    }
   }
 }
 
@@ -984,6 +1017,7 @@ function toggleSideL(){
   $('main').classList.toggle('hL',!sL);
   $('btnTL').classList.toggle('on',sL);
   $('cwBlur').classList.toggle('on',sL||sR);
+  CV().classList.toggle('blur-below',sL||sR);
   if(sL||sR) $('cwBlur').addEventListener('pointerdown',closeSidePanels,{once:true});
   setTimeout(refreshPage,300);
 }
@@ -993,6 +1027,7 @@ function toggleSideR(){
   $('main').classList.toggle('hR',!sR);
   $('btnTR').classList.toggle('on',sR);
   $('cwBlur').classList.toggle('on',sL||sR);
+  CV().classList.toggle('blur-below',sL||sR);
   if(sL||sR) $('cwBlur').addEventListener('pointerdown',closeSidePanels,{once:true});
   setTimeout(refreshPage,300);
 }
@@ -1011,6 +1046,7 @@ function closeSidePanels(){
   if(sL){sL=false;$('sideL').classList.add('col');$('main').classList.add('hL');$('btnTL').classList.remove('on');}
   if(sR){sR=false;$('sideR').classList.add('col');$('main').classList.add('hR');$('btnTR').classList.remove('on');}
   $('cwBlur').classList.remove('on');
+  CV().classList.remove('blur-below');
   setTimeout(refreshPage,300);
 }
 
@@ -1658,7 +1694,36 @@ function renderHS(page){
     // 삭제 버튼
     const del=document.createElement('button');del.className='hs-del';del.textContent='×';
     del.addEventListener('pointerup',e=>{e.stopPropagation();if(confirm(`"${hs.title||`메모 ${i+1}`}" 삭제?`))delHS(hs.id);});
-    el.appendChild(badge);el.appendChild(tip);el.appendChild(del);
+    // PC resize 핸들
+    const rh=document.createElement('div');rh.className='hs-rh';
+    el.appendChild(badge);el.appendChild(tip);el.appendChild(del);el.appendChild(rh);
+
+    // ── PC resize handle 드래그 ──
+    let rhDragging=false, rhStartX=0, rhStartSz=0;
+    rh.addEventListener('pointerdown',e=>{
+      e.stopPropagation();e.preventDefault();
+      rhDragging=true;
+      rhStartX=e.clientX;
+      rhStartSz=curSz;
+      el.classList.add('hs-rh-dragging','hs-resizing');
+      rh.setPointerCapture(e.pointerId);
+    });
+    rh.addEventListener('pointermove',e=>{
+      if(!rhDragging)return;
+      e.preventDefault();
+      const delta=e.clientX-rhStartX;
+      applySize(rhStartSz+delta);
+    },{passive:false});
+    rh.addEventListener('pointerup',e=>{
+      if(!rhDragging)return;
+      rhDragging=false;
+      el.classList.remove('hs-rh-dragging','hs-resizing');
+      hs.size=curSz;save();
+    });
+    rh.addEventListener('pointercancel',()=>{
+      rhDragging=false;
+      el.classList.remove('hs-rh-dragging','hs-resizing');
+    });
 
     // ── 통합 포인터 핸들러 ──
     let state='idle'; // 'idle'|'resize'|'move'|'delete'
@@ -2114,15 +2179,22 @@ function initCVEvents(){
         const hs={id:Date.now(),imgId:hitImg.id,rx,ry,x:pt.x/W*100,y:pt.y/H*100,
           w:0,h:0,size:32,title:'',text:'',tblData:null,imgData:null,tab:'text'};
         p.hotspots.push(hs);renderHS(p);renderHSList(p);save();
-        setMode('edit'); // 생성 후 편집 모드 복귀
+        setMode('edit');
         openEdit(hs.id);
       },
       '생성',
-      ()=>{ setMode('edit'); } // 취소 시에도 편집 모드 복귀
+      ()=>{ setMode('edit'); }
     );
   });
 
-  // add-tb 모드: 빈 곳 클릭 → 텍스트박스 생성
+  // add-hs 모드: 이미지 pointerdown에서 선택 동작 차단 (모바일)
+  cv.addEventListener('pointerdown',e=>{
+    if(mode!=='add-hs')return;
+    const ci=e.target.closest('.ci');
+    if(ci){e.stopPropagation();e.preventDefault();}
+  },{capture:true,passive:false});
+
+  // add-tb 모드: 빈 곳 클릭 → 텍스트박스 생성 (이미지 없어도 가능)
   let textClickBlocked = false;
   cv.addEventListener('pointerdown',e=>{
     if(mode!=='add-tb')return;
@@ -2134,7 +2206,7 @@ function initCVEvents(){
   cv.addEventListener('click',e=>{
     if(mode!=='add-tb')return;
     if(e.target.closest('.ci')||e.target.closest('.hs')||e.target.closest('.tb'))return;
-    const p=ST.pages[ST.cur];if(!p||!p.images.length)return;
+    const p=ST.pages[ST.cur];if(!p)return;
     if(textClickBlocked){textClickBlocked=false;return;}
     const pt=cvPt(e.clientX,e.clientY);
     const W=cvW(),H=cvH();
