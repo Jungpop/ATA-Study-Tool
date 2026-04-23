@@ -907,7 +907,11 @@ function showConfirmDlg(title, sub, onOk, okLabel='생성', onCancel=null){
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
 
 // ── 저장 / 불러오기 ──────────────────────────
-function save(){try{localStorage.setItem('ata_v8',JSON.stringify(ST));}catch(e){console.warn('save failed',e);}}
+let loadFailed = false;
+function save(){
+  if(loadFailed){console.warn('save blocked: load failed');return;}
+  try{localStorage.setItem('ata_v8',JSON.stringify(ST));}catch(e){console.warn('save failed',e);}
+}
 function load(){
   try{
     const raw=['ata_v8','ata_v7','ata_v6','ata_v5'].reduce((a,k)=>a||localStorage.getItem(k),null);
@@ -927,8 +931,10 @@ function load(){
       p.images.forEach(im=>{ if(im.drawData===undefined) im.drawData=null; });
     });
   }catch(e){
-    // 데이터 삭제 절대 금지 — 에러 로그만 남기고 기존 데이터 유지
-    console.warn('load failed, keeping existing data:', e);
+    loadFailed=true;
+    console.warn('load failed, save blocked to protect data:', e);
+    // 로드 실패 시 사용자에게 알림
+    setTimeout(()=>toast('⚠️ 데이터 로드 오류 — 불러오기로 복원하세요'),500);
   }
 }
 
@@ -1106,6 +1112,11 @@ function makeInlineInput(cur, onCommit, onCancel){
   const inp=document.createElement('input');
   inp.className='inline-edit';inp.value=cur;
   inp.setAttribute('inputmode','text');
+  inp.setAttribute('autocomplete','off');
+  inp.setAttribute('autocorrect','off');
+  inp.setAttribute('autocapitalize','off');
+  inp.setAttribute('spellcheck','false');
+  inp.setAttribute('enterkeyhint','done');
   let committed=false;
 
   function commit(){
@@ -1143,11 +1154,17 @@ function makeInlineInput(cur, onCommit, onCancel){
   return inp;
 }
 function focusInlineInput(inp){
+  // iOS Safari viewport 점프 방지
+  const vp=document.querySelector('meta[name=viewport]');
+  const orig=vp.content;
+  vp.content='width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no,viewport-fit=cover';
   inp.readOnly=false;
   const sx=window.scrollX, sy=window.scrollY;
   inp.focus({preventScroll:true});
   window.scrollTo(sx,sy);
   inp.select();
+  // 복원
+  setTimeout(()=>{ vp.content=orig; }, 300);
 }
 function startInlineEditPage(idx, spanEl){
   if(spanEl.querySelector('input'))return;
@@ -1933,6 +1950,17 @@ function makeTBEl(tb,W,H){
   }
   ta.addEventListener('input',autoHeight);
 
+  function fixFocus(el){
+    const vp=document.querySelector('meta[name=viewport]');
+    const orig=vp.content;
+    vp.content='width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no,viewport-fit=cover';
+    el.readOnly=false;
+    const sx=window.scrollX, sy=window.scrollY;
+    el.focus({preventScroll:true});
+    window.scrollTo(sx,sy);
+    setTimeout(()=>{ vp.content=orig; },300);
+  }
+
   // ── 완료/편집 상태 전환 ──
   function enterDone(){
     ta.blur();
@@ -1944,11 +1972,7 @@ function makeTBEl(tb,W,H){
   function enterEdit(){
     wrap.classList.remove('done');
     activeTextBox=tb.id;
-    ta.readOnly=false;
-    // iOS 화면 스크롤 방지: focus 전 스크롤 위치 고정
-    const scrollX=window.scrollX, scrollY=window.scrollY;
-    ta.focus({preventScroll:true});
-    window.scrollTo(scrollX, scrollY);
+    fixFocus(ta);
     ta.selectionStart=ta.selectionEnd=ta.value.length;
   }
 
@@ -2219,10 +2243,14 @@ function initCVEvents(){
         requestAnimationFrame(()=>{
           const el=CV().querySelector(`.tb[data-tid="${tb.id}"] textarea`);
           if(el){
+            const vp=document.querySelector('meta[name=viewport]');
+            const orig=vp.content;
+            vp.content='width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no,viewport-fit=cover';
             el.readOnly=false;
             const sx=window.scrollX, sy=window.scrollY;
             el.focus({preventScroll:true});
             window.scrollTo(sx,sy);
+            setTimeout(()=>{ vp.content=orig; },300);
           }
         });
       },
