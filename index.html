@@ -57,11 +57,11 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 #main.hL{}#main.hR{}#main.hL.hR{}
 
 /* ── SIDEBARS — absolute overlay, canvas never moves ── */
-#sideL{background:var(--s1);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;
+#sideL{background:var(--s1);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:visible;
   position:absolute;left:0;top:0;bottom:0;width:var(--SL);z-index:100;
   transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;}
 #sideL.col{transform:translateX(-100%);opacity:0;pointer-events:none;}
-#sideR{background:var(--s1);border-left:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;
+#sideR{background:var(--s1);border-left:1px solid var(--bd);display:flex;flex-direction:column;overflow:visible;
   position:absolute;right:0;top:0;bottom:0;width:var(--SR);z-index:100;
   transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;}
 #sideR.col{transform:translateX(100%);opacity:0;pointer-events:none;}
@@ -1938,11 +1938,13 @@ function makeTBEl(tb,W,H){
   }
   function enterEdit(){
     wrap.classList.remove('done');
-    ta.readOnly=false; // 먼저 해제 → iOS 키보드 올라옴
-    requestAnimationFrame(()=>{
-      ta.focus();
-      ta.selectionStart=ta.selectionEnd=ta.value.length;
-    });
+    activeTextBox=tb.id;
+    ta.readOnly=false;
+    // iOS 화면 스크롤 방지: focus 전 스크롤 위치 고정
+    const scrollX=window.scrollX, scrollY=window.scrollY;
+    ta.focus({preventScroll:true});
+    window.scrollTo(scrollX, scrollY);
+    ta.selectionStart=ta.selectionEnd=ta.value.length;
   }
 
   // Enter = 완료, Shift+Enter = 줄바꿈
@@ -1954,10 +1956,9 @@ function makeTBEl(tb,W,H){
     e.stopPropagation();
   });
 
-  // 포커스: activeTextBox 설정 + iOS 밀림 방지
+  // 포커스: activeTextBox 설정
   ta.addEventListener('focus',()=>{
     activeTextBox=tb.id;
-    requestAnimationFrame(()=>{ ta.readOnly=false; });
   });
   ta.addEventListener('blur',()=>{
     if(activeTextBox===tb.id) activeTextBox=null;
@@ -2209,10 +2210,15 @@ function initCVEvents(){
         const tb={id:Date.now(),x:cx/W*100,y:cy/H*100,w:25,h:5,text:'',fs:14,color:'#fff'};
         p.tboxes.push(tb);save();
         makeTBEl(tb,W,H);
-        setMode('edit'); // 생성 후 편집 모드 복귀
+        setMode('edit');
         requestAnimationFrame(()=>{
           const el=CV().querySelector(`.tb[data-tid="${tb.id}"] textarea`);
-          if(el) el.focus();
+          if(el){
+            el.readOnly=false;
+            const sx=window.scrollX, sy=window.scrollY;
+            el.focus({preventScroll:true});
+            window.scrollTo(sx,sy);
+          }
         });
       },
       '생성',
