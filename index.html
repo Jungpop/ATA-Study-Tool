@@ -68,7 +68,7 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 .side-hdr{padding:10px 14px;font-size:11px;font-family:var(--mono);color:var(--txm);letter-spacing:1px;
   border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;font-weight:500;}
 .sbadge{background:rgba(88,166,255,.15);color:var(--ac);font-size:10px;font-family:var(--mono);font-weight:600;padding:2px 7px;border-radius:20px;border:1px solid rgba(88,166,255,.3);}
-#pageList{flex:1;overflow-y:auto;padding:5px;overscroll-behavior:contain;}
+#pageList{flex:1;overflow-y:auto;padding:5px;overscroll-behavior:contain;min-height:0;}
 .folder{margin-bottom:2px;}
 .fhdr{display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:var(--r);border:1px solid transparent;
   background:var(--s2);cursor:default;min-height:40px;}
@@ -421,7 +421,7 @@ input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing
 /* 툴바 버튼 비활성 */
 .tbtn.disabled,.tbtn:disabled{opacity:.32;pointer-events:none;cursor:default;}
 .bnt.disabled,.bnt:disabled{opacity:.32;pointer-events:none;}
-#hsList{flex:1;overflow-y:auto;padding:6px;}
+#hsList{flex:1;overflow-y:auto;padding:6px;min-height:0;}
 .hsc{padding:10px 12px;background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:4px;cursor:pointer;transition:border-color .15s;}
 .hsc:hover,.hsc:active{border-color:var(--bdL);background:var(--s3);}
 .hsc-top{display:flex;align-items:center;gap:7px;margin-bottom:5px;}
@@ -2239,6 +2239,7 @@ function syncDL(page){
   const W=cvW(), H=cvH();
   if(W===0||H===0)return;
   if(dl.width!==W||dl.height!==H){dl.width=W;dl.height=H;}
+  CTX().clearRect(0,0,W,H); // 항상 초기화 — 페이지 전환 시 이전 필기 잔상 제거
   dl.style.cssText=`position:absolute;left:0;top:0;width:${W}px;height:${H}px;z-index:5;pointer-events:none;display:none;`;
   if(page&&page.drawData){
     dl.style.display='block';
