@@ -23,9 +23,10 @@
   --sal:env(safe-area-inset-left,0px);--sar:env(safe-area-inset-right,0px);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html{height:100%;-webkit-text-size-adjust:100%;}
+html{height:100%;-webkit-text-size-adjust:100%;overflow:hidden;position:fixed;width:100%;}
 body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-family:var(--sans);
-  overscroll-behavior:none;padding-top:var(--sat);padding-left:var(--sal);padding-right:var(--sar);}
+  overscroll-behavior:none;padding-top:var(--sat);padding-left:var(--sal);padding-right:var(--sar);
+  position:fixed;width:100%;top:0;left:0;}
 button{font-family:var(--sans);cursor:pointer;border:none;background:none;}
 input,textarea,select{font-family:var(--sans);-webkit-appearance:none;box-sizing:border-box;}
 ::-webkit-scrollbar{width:3px;height:3px;}
@@ -1154,17 +1155,9 @@ function makeInlineInput(cur, onCommit, onCancel){
   return inp;
 }
 function focusInlineInput(inp){
-  // iOS Safari viewport 점프 방지
-  const vp=document.querySelector('meta[name=viewport]');
-  const orig=vp.content;
-  vp.content='width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no,viewport-fit=cover';
   inp.readOnly=false;
-  const sx=window.scrollX, sy=window.scrollY;
   inp.focus({preventScroll:true});
-  window.scrollTo(sx,sy);
   inp.select();
-  // 복원
-  setTimeout(()=>{ vp.content=orig; }, 300);
 }
 function startInlineEditPage(idx, spanEl){
   if(spanEl.querySelector('input'))return;
@@ -1951,14 +1944,8 @@ function makeTBEl(tb,W,H){
   ta.addEventListener('input',autoHeight);
 
   function fixFocus(el){
-    const vp=document.querySelector('meta[name=viewport]');
-    const orig=vp.content;
-    vp.content='width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no,viewport-fit=cover';
     el.readOnly=false;
-    const sx=window.scrollX, sy=window.scrollY;
     el.focus({preventScroll:true});
-    window.scrollTo(sx,sy);
-    setTimeout(()=>{ vp.content=orig; },300);
   }
 
   // ── 완료/편집 상태 전환 ──
@@ -2242,16 +2229,7 @@ function initCVEvents(){
         setMode('edit');
         requestAnimationFrame(()=>{
           const el=CV().querySelector(`.tb[data-tid="${tb.id}"] textarea`);
-          if(el){
-            const vp=document.querySelector('meta[name=viewport]');
-            const orig=vp.content;
-            vp.content='width=device-width,initial-scale=1.0,maximum-scale=1.0,minimum-scale=1.0,user-scalable=no,viewport-fit=cover';
-            el.readOnly=false;
-            const sx=window.scrollX, sy=window.scrollY;
-            el.focus({preventScroll:true});
-            window.scrollTo(sx,sy);
-            setTimeout(()=>{ vp.content=orig; },300);
-          }
+          if(el){ el.readOnly=false; el.focus({preventScroll:true}); }
         });
       },
       '생성',
