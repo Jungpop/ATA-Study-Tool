@@ -907,7 +907,7 @@ function showConfirmDlg(title, sub, onOk, okLabel='생성', onCancel=null){
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
 
 // ── 저장 / 불러오기 ──────────────────────────
-function save(){try{localStorage.setItem('ata_v8',JSON.stringify(ST));}catch(e){}}
+function save(){try{localStorage.setItem('ata_v8',JSON.stringify(ST));}catch(e){console.warn('save failed',e);}}
 function load(){
   try{
     const raw=['ata_v8','ata_v7','ata_v6','ata_v5'].reduce((a,k)=>a||localStorage.getItem(k),null);
@@ -919,7 +919,6 @@ function load(){
     ST.pages.forEach(p=>{
       if(!p.images)p.images=[];
       if(p.imgData&&!p.images.length){
-        // 구버전 마이그레이션: 단일 이미지 → images 배열
         p.images=[{id:Date.now()+Math.random(),data:p.imgData,x:0,y:0,w:100,h:100}];
         delete p.imgData; delete p.imgW;
       }
@@ -927,7 +926,10 @@ function load(){
       if(!p.hotspots)p.hotspots=[];
       p.images.forEach(im=>{ if(im.drawData===undefined) im.drawData=null; });
     });
-  }catch(e){localStorage.removeItem('ata_v8');}
+  }catch(e){
+    // 데이터 삭제 절대 금지 — 에러 로그만 남기고 기존 데이터 유지
+    console.warn('load failed, keeping existing data:', e);
+  }
 }
 
 function resetAll(){
